@@ -195,7 +195,7 @@ app.get('/get-emails', (req, res) => {
 app.post('/schedule-emails', async (req, res) => {
   const { sheetId, sheetName, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
 
-  if (!sheetId || !sheetName || !emailSubject || !emailBody || !attachment || !ranges || !scheduledDateTime) {
+  if (!sheetId || !sheetName || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
     return res.status(400).json({ status: 'error', message: 'One or more parameters are missing.' });
   }
 
@@ -223,7 +223,7 @@ app.post('/schedule-emails', async (req, res) => {
       sheetName,
       emailSubject,
       emailBody,
-      attachment,
+      attachment: attachment || null, // Allow attachment to be optional
       ranges,
       scheduledDateTime,
       cronTime
@@ -265,14 +265,63 @@ app.post('/schedule-emails', async (req, res) => {
     res.status(500).json({ status: 'error', message: 'An error occurred while scheduling emails.' });
   }
 });
+
 // Function to get data from Google Sheets
-async function getSheetData(sheetId, sheetName) {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: sheetName,
-  });
-  return response.data.values;
+async function getSheetNames(sheetId) {
+  try {
+    // Fetch the spreadsheet metadata to get sheet names
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+    });
+
+    // Extract sheet names from the response
+    const sheetNames = response.data.sheets.map(sheet => sheet.properties.title);
+    return {
+      status: 'success',
+      sheetNames
+    };
+  } catch (error) {
+    if (error.code === 403 || error.code === 401) {
+      // Handle permission or authentication error
+      return {
+        status: 'error',
+        message: 'Access Denied: Unable to connect to the spreadsheet. Please check your permissions.'
+      };
+    } else {
+      // Handle any other errors
+      return {
+        status: 'error',
+        message: 'An error occurred while fetching the spreadsheet data.',
+        error
+      };
+    }
+  }
 }
+
+// Fetch data from a specific sheet
+async function getSheetData(sheetId, sheetName) {
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: sheetName,
+    });
+      return response.data.values;
+  }
+    
+app.post('/get-sheet-names', async (req, res) => {
+  const { sheetId } = req.body;
+
+  if (!sheetId) {
+    return res.status(400).json({ status: 'error', message: 'Sheet ID is required.' });
+  }
+
+  const result = await getSheetNames(sheetId);
+  if (result.status === 'success') {
+    res.json({ status: 'success', sheetNames: result.sheetNames });
+  } else {
+    res.status(400).json({ status: 'error', message: result.message });
+  }
+});
 
 // Function to send emails with a delay
 async function sendEmails(sheetData, emailSubject, emailBody, attachment, ranges) {
@@ -300,10 +349,17 @@ async function sendEmails(sheetData, emailSubject, emailBody, attachment, ranges
       continue;
     }
 
-    await sendEmail(email, emailSubject, formattedEmailBody, attachment, emailIndex);
+    // Check if attachment is provided before sending
+    if (attachment) {
+      await sendEmail(email, emailSubject, formattedEmailBody, attachment, emailIndex);
+    } else {
+      await sendEmail(email, emailSubject, formattedEmailBody, null, emailIndex); // Pass null or handle it in sendEmail
+    }
+
     await new Promise(resolve => setTimeout(resolve, 5000));
   }
 }
+
 
 function getEmailIndexForRange(emailNumber, ranges) {
   for (let i = 0; i < ranges.length; i++) {
@@ -318,20 +374,25 @@ function getEmailIndexForRange(emailNumber, ranges) {
 async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
   const transporter = getTransporter(emailIndex);
 
+  // Set up mail options
   const mailOptions = {
     from: transporter.options.auth.user,
     to,
     subject,
     html: htmlContent,
-    attachments: [
+  };
+
+  // Add attachment only if it exists
+  if (attachment) {
+    mailOptions.attachments = [
       {
         filename: attachment.filename,
         content: attachment.content,
         encoding: 'base64',
-        contentType: attachment.contentType
+        contentType: attachment.contentType,
       }
-    ]
-  };
+    ];
+  }
 
   try {
     await transporter.sendMail(mailOptions);
