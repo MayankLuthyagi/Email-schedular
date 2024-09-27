@@ -91,8 +91,31 @@ app.delete('/delete-scheduled-task/:index', (req, res) => {
   }
 });
 // Route to edit email credentials by index or email
+app.post('/add-email-credentials', (req, res) => {
+  const { user, pass, alias } = req.body;
+
+  if (!user || !pass) {
+    return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
+  }
+
+  // Read existing credentials
+  let emailCredentials = [];
+  if (fs.existsSync(emailCredentialsFilePath)) {
+    emailCredentials = JSON.parse(fs.readFileSync(emailCredentialsFilePath, 'utf8'));
+  }
+
+  // Add new credentials
+  emailCredentials.push({ user, pass, alias });
+
+  // Save credentials to file
+  fs.writeFileSync(emailCredentialsFilePath, JSON.stringify(emailCredentials, null, 2), 'utf8');
+
+  res.json({ status: 'success', message: 'Email credentials added successfully.' });
+});
+
+// Route to edit email credentials (including alias)
 app.put('/edit-email-credentials/:index', (req, res) => {
-  const { user, pass } = req.body;
+  const { user, pass, alias } = req.body;
   const { index } = req.params;
 
   if (!user || !pass) {
@@ -112,7 +135,7 @@ app.put('/edit-email-credentials/:index', (req, res) => {
     }
 
     // Update credentials at the given index
-    emailCredentials[index] = { user, pass };
+    emailCredentials[index] = { user, pass, alias };
 
     // Save the updated credentials
     fs.writeFileSync(emailCredentialsFilePath, JSON.stringify(emailCredentials, null, 2), 'utf8');
@@ -124,7 +147,7 @@ app.put('/edit-email-credentials/:index', (req, res) => {
   }
 });
 
-// Route to delete email credentials by index or email
+// Route to delete email credentials by index
 app.delete('/delete-email-credentials/:index', (req, res) => {
   const { index } = req.params;
 
@@ -152,28 +175,6 @@ app.delete('/delete-email-credentials/:index', (req, res) => {
     res.status(500).json({ status: 'error', message: 'An error occurred while deleting credentials.' });
   }
 });
-// Route to add email credentials
-app.post('/add-email-credentials', (req, res) => {
-  const { user, pass } = req.body;
-
-  if (!user || !pass) {
-    return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
-  }
-
-  // Read existing credentials
-  let emailCredentials = [];
-  if (fs.existsSync(emailCredentialsFilePath)) {
-    emailCredentials = JSON.parse(fs.readFileSync(emailCredentialsFilePath, 'utf8'));
-  }
-
-  // Add new credentials
-  emailCredentials.push({ user, pass });
-
-  // Save credentials to file
-  fs.writeFileSync(emailCredentialsFilePath, JSON.stringify(emailCredentials, null, 2), 'utf8');
-
-  res.json({ status: 'success', message: 'Email credentials added successfully.' });
-});
 // Route to get email addresses
 app.get('/get-emails', (req, res) => {
   try {
@@ -195,15 +196,15 @@ app.get('/get-emails', (req, res) => {
 app.post('/schedule-emails', async (req, res) => {
   const { sheetId, sheetName, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
 
+  // Validate required fields
   if (!sheetId || !sheetName || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
     return res.status(400).json({ status: 'error', message: 'One or more parameters are missing.' });
   }
 
   try {
-    // Schedule the emails using cron at the provided scheduledDateTime
+    // Validate that scheduled time is in the future
     const scheduledDate = dayjs(scheduledDateTime);
     const now = dayjs();
-
     if (scheduledDate.isBefore(now)) {
       return res.status(400).json({ status: 'error', message: 'Scheduled time must be in the future.' });
     }
@@ -217,13 +218,33 @@ app.post('/schedule-emails', async (req, res) => {
       tasks = JSON.parse(fs.readFileSync(scheduledEmailsFilePath, 'utf8'));
     }
 
+    // Handle attachments - single, multiple, or null
+    let emailAttachments = null;
+    if (attachment) {
+      if (Array.isArray(attachment)) {
+        // If it's an array, assign the array directly
+        emailAttachments = attachment.map(att => ({
+          filename: att.filename,
+          content: att.content,
+          contentType: att.contentType
+        }));
+      } else {
+        // If it's a single object, wrap it in an array
+        emailAttachments = [{
+          filename: attachment.filename,
+          content: attachment.content,
+          contentType: attachment.contentType
+        }];
+      }
+    }
+
     // Add new task
     const task = {
       sheetId,
       sheetName,
       emailSubject,
       emailBody,
-      attachment: attachment || null, // Allow attachment to be optional
+      attachment: emailAttachments, // Store processed attachments
       ranges,
       scheduledDateTime,
       cronTime
@@ -265,7 +286,6 @@ app.post('/schedule-emails', async (req, res) => {
     res.status(500).json({ status: 'error', message: 'An error occurred while scheduling emails.' });
   }
 });
-
 // Function to get data from Google Sheets
 async function getSheetNames(sheetId) {
   try {
@@ -332,7 +352,7 @@ async function sendEmails(sheetData, emailSubject, emailBody, attachment, ranges
   for (let i = 1; i < sheetData.length; i++) {
     const row = sheetData[i];
     const name = row[0]?.toString() || '';
-    const email = row[1]?.toString() || '';
+    const email = row[3]?.toString() || '';
 
     if (!name || !email) {
       console.log(`Skipping row ${i + 1} due to missing data.`);
@@ -374,24 +394,41 @@ function getEmailIndexForRange(emailNumber, ranges) {
 async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
   const transporter = getTransporter(emailIndex);
 
+  // Determine whether to use alias or user for the 'from' field
+  const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
+
+  // Normalize HTML content to remove excessive whitespace
+  const normalizedHtmlContent = htmlContent
+    .replace(/\s+/g, ' ')  // Replace multiple spaces/newlines with a single space
+    .trim(); // Remove leading and trailing spaces
+
   // Set up mail options
   const mailOptions = {
-    from: transporter.options.auth.user,
+    from: fromAddress, // Use alias if available, otherwise use user email
     to,
     subject,
-    html: htmlContent,
+    html: normalizedHtmlContent, // Use the normalized HTML content
   };
 
-  // Add attachment only if it exists
+  // Handle attachments: single, multiple, or null
   if (attachment) {
-    mailOptions.attachments = [
-      {
+    if (Array.isArray(attachment)) {
+      // Multiple attachments
+      mailOptions.attachments = attachment.map(att => ({
+        filename: att.filename,
+        content: att.content,
+        encoding: 'base64',
+        contentType: att.contentType,
+      }));
+    } else {
+      // Single attachment
+      mailOptions.attachments = [{
         filename: attachment.filename,
         content: attachment.content,
         encoding: 'base64',
         contentType: attachment.contentType,
-      }
-    ];
+      }];
+    }
   }
 
   try {
@@ -401,7 +438,6 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
     console.error(`Error sending email to ${to}:`, error);
   }
 }
-
 // Function to get the transporter with credentials from the file
 function getTransporter(emailIndex) {
   const emailCredentials = JSON.parse(fs.readFileSync(emailCredentialsFilePath, 'utf8'));
@@ -415,7 +451,8 @@ function getTransporter(emailIndex) {
     service: 'gmail',
     auth: {
       user: account.user,
-      pass: account.pass
+      pass: account.pass,
+      alias:account.alias
     }
   });
 }
