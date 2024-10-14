@@ -406,7 +406,12 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
     from: fromAddress, // Use alias if available, otherwise use user email
     to,
     subject,
-    html: `<div style="line-height: 0.5;">${normalizedHtmlContent}</div>`, // Set line height here
+    html: `<div style="line-height: 0.5;">
+              ${normalizedHtmlContent
+                .replace(/<ul>/g, '<ul style="line-height: 1.5;">')
+                .replace(/<ol>/g, '<ol style="line-height: 1.5;">')
+              }
+            </div>`, // Set line height here
   };
 
   // Handle attachments: single, multiple, or null
@@ -437,7 +442,6 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
     console.error(`Error sending email to ${to}:`, error);
   }
 }
-
 // Function to get the transporter with credentials from the file
 function getTransporter(emailIndex) {
   const emailCredentials = JSON.parse(fs.readFileSync(emailCredentialsFilePath, 'utf8'));
