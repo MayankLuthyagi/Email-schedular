@@ -351,17 +351,15 @@ async function sendEmails(sheetData, emailSubject, emailBody, attachment, ranges
 
   for (let i = 1; i < sheetData.length; i++) {
     const row = sheetData[i];
-    const name = row[0]?.toString() || '';
-    const email = row[3]?.toString() || '';
+    const email = row[0]?.toString() || '';
 
-    if (!name || !email) {
+    if (!email) {
       console.log(`Skipping row ${i + 1} due to missing data.`);
       continue;
     }
 
-    console.log(`Sending email ${i} of ${sheetData.length - 1} to ${name}...`);
+    console.log(`Sending email ${i} of ${sheetData.length - 1}`);
 
-    const formattedEmailBody = emailBody.replace('{{Name}}', name);
 
     const emailIndex = getEmailIndexForRange(i, ranges);
     if (emailIndex === -1) {
@@ -371,9 +369,9 @@ async function sendEmails(sheetData, emailSubject, emailBody, attachment, ranges
 
     // Check if attachment is provided before sending
     if (attachment) {
-      await sendEmail(email, emailSubject, formattedEmailBody, attachment, emailIndex);
+      await sendEmail(email, emailSubject, emailBody, attachment, emailIndex);
     } else {
-      await sendEmail(email, emailSubject, formattedEmailBody, null, emailIndex); // Pass null or handle it in sendEmail
+      await sendEmail(email, emailSubject, emailBody, null, emailIndex); // Pass null or handle it in sendEmail
     }
 
     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -399,6 +397,7 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
 
   // Normalize HTML content to remove excessive whitespace
   const normalizedHtmlContent = htmlContent
+    .replace(/\n+/g, '<br>')
     .replace(/\s+/g, ' ')  // Replace multiple spaces/newlines with a single space
     .trim(); // Remove leading and trailing spaces
 
@@ -407,7 +406,7 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
     from: fromAddress, // Use alias if available, otherwise use user email
     to,
     subject,
-    html: normalizedHtmlContent, // Use the normalized HTML content
+    html: `<div style="line-height: 0.5;">${normalizedHtmlContent}</div>`, // Set line height here
   };
 
   // Handle attachments: single, multiple, or null
@@ -438,6 +437,7 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
     console.error(`Error sending email to ${to}:`, error);
   }
 }
+
 // Function to get the transporter with credentials from the file
 function getTransporter(emailIndex) {
   const emailCredentials = JSON.parse(fs.readFileSync(emailCredentialsFilePath, 'utf8'));
