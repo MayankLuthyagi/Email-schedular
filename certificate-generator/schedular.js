@@ -374,26 +374,18 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
       from: fromAddress, // Use alias if available, otherwise use user email
       to,
       subject,
-      html: `
+      html: `   <div style="line-height: 0.5;">
+          ${normalizedHtmlContent
+            .replace(/<ul>/g, '<ul style="line-height: 1.5;">')
+            .replace(/<ol>/g, '<ol style="line-height: 1.5;">')}
+        </div>
         <style>
           @media only screen and (max-width: 600px) {
-            p {
-              line-height: 1.0; /* Line height for mobile screens */
+            div {
+              line-height: 1.8; /* Use normal line height on mobile */
             }
           }
-          @media only screen and (min-width: 801px) {
-            p {
-              line-height: 0.5; /* Line height for desktop screens */
-            }
-            ul, ol {
-              line-height: 1.5; /* Line height for lists on desktop */
-            }
-          }
-        </style>
-        <div class="content">
-          ${normalizedHtmlContent}
-        </div>
-      `,
+        </style>`, // Set line height here
     };
 
     // Handle attachments: single, multiple, or null
