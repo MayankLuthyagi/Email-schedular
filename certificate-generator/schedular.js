@@ -502,6 +502,10 @@ app.delete('/demails', async (req, res) => {
   }
 });
 
+cron.schedule('*/5 * * * *', () => {
+  console.log('server is running');
+});
+
 app.listen(port, () => {
   console.log(`Server running on port no:${port}`);
 });
