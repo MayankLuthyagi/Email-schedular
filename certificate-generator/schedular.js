@@ -363,8 +363,8 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
     const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
 
     const normalizedHtmlContent = htmlContent
-      .replace(/\n+/g, '<br>')
-      .replace(/\s+/g, ' ')
+      .replace(/\n+/g, ' ')  // Replace multiple newlines with a single space
+      .replace(/\s+/g, ' ')  // Replace multiple spaces with a single space
       .trim();
 
     const mailOptions = {
@@ -372,20 +372,21 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
       to,
       subject,
       html: `
-        <div style="line-height: 1.5; max-width: 600px; margin: auto; font-size: 16px;">
-          ${normalizedHtmlContent.replace(/<ul>/g, '<ul style="line-height: 1.5;">')
-                                 .replace(/<ol>/g, '<ol style="line-height: 1.5;">')}
+        <div style="line-height: 1.5; font-size: 16px; text-align: left; margin: 0;">
+          ${normalizedHtmlContent.replace(/<ul>/g, '<ul style="line-height: 1.5; margin: 0;">')
+                                 .replace(/<ol>/g, '<ol style="line-height: 1.5; margin: 0;">')}
         </div>
         <style>
           @media only screen and (max-width: 600px) {
             div {
-              line-height: 1.8; 
+              line-height: 1.5;
               font-size: 14px;
-              word-wrap: break-word; /* Ensures long words or URLs break properly */
+              word-wrap: break-word;
+              text-align: left;
             }
           }
           p {
-            margin: 1em 0; /* Ensure paragraphs have consistent spacing */
+            margin: 0 0 1em 0; /* Consistent paragraph spacing */
           }
         </style>`,
     };
