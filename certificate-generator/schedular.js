@@ -360,56 +360,52 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
   try {
     const transporter = await getTransporter(emailIndex);
 
-    // Determine whether to use alias or user for the 'from' field
     const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
 
-    // Normalize HTML content to remove excessive whitespace
     const normalizedHtmlContent = htmlContent
       .replace(/\n+/g, '<br>')
-      .replace(/\s+/g, ' ')  // Replace multiple spaces/newlines with a single space
-      .trim(); // Remove leading and trailing spaces
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    // Set up mail options
     const mailOptions = {
-      from: fromAddress, // Use alias if available, otherwise use user email
+      from: fromAddress,
       to,
       subject,
-      html: `   <div style="line-height: 0.5;">
-          ${normalizedHtmlContent
-            .replace(/<ul>/g, '<ul style="line-height: 1.5;">')
-            .replace(/<ol>/g, '<ol style="line-height: 1.5;">')}
+      html: `
+        <div style="line-height: 1.5; max-width: 600px; margin: auto; font-size: 16px;">
+          ${normalizedHtmlContent.replace(/<ul>/g, '<ul style="line-height: 1.5;">')
+                                 .replace(/<ol>/g, '<ol style="line-height: 1.5;">')}
         </div>
         <style>
           @media only screen and (max-width: 600px) {
             div {
-              line-height: 1.8; /* Use normal line height on mobile */
+              line-height: 1.8; 
+              font-size: 14px;
+              word-wrap: break-word; /* Ensures long words or URLs break properly */
             }
           }
-        </style>`, // Set line height here
+          p {
+            margin: 1em 0; /* Ensure paragraphs have consistent spacing */
+          }
+        </style>`,
     };
 
-    // Handle attachments: single, multiple, or null
     if (attachment) {
-      if (Array.isArray(attachment)) {
-        // Multiple attachments
-        mailOptions.attachments = attachment.map(att => ({
-          filename: att.filename,
-          content: att.content,
-          encoding: 'base64',
-          contentType: att.contentType,
-        }));
-      } else {
-        // Single attachment
-        mailOptions.attachments = [{
-          filename: attachment.filename,
-          content: attachment.content,
-          encoding: 'base64',
-          contentType: attachment.contentType,
-        }];
-      }
+      mailOptions.attachments = Array.isArray(attachment)
+        ? attachment.map(att => ({
+            filename: att.filename,
+            content: att.content,
+            encoding: 'base64',
+            contentType: att.contentType,
+          }))
+        : [{
+            filename: attachment.filename,
+            content: attachment.content,
+            encoding: 'base64',
+            contentType: attachment.contentType,
+          }];
     }
 
-    // Send the email using the transporter
     await transporter.sendMail(mailOptions);
     console.log(`Email sent successfully to ${to}`);
   } catch (error) {
