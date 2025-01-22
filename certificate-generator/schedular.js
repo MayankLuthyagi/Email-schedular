@@ -386,7 +386,12 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
             }
           }
           p {
-            margin: 0 0 1em 0; /* Consistent paragraph spacing */
+            margin: 0 0 0.5em 0; /* Reduced paragraph spacing */
+            padding: 0; /* Ensure no padding is added */
+          }
+          ul, ol {
+            margin: 0 0 0.5em 0; /* Consistent list spacing */
+            padding: 0;
           }
         </style>`,
     };
