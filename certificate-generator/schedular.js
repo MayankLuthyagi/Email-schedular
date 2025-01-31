@@ -252,7 +252,8 @@ async function sendEmails(sheetId, sheetName, emailId, emailSubject, emailBody, 
   }
   else {
     const len = Math.min(ranges[1], rows.length - 1);
-    for (let i = ranges[0]; i <= len; i++) {  // Start from 1 to skip the header row
+    const start = Math.max(ranges[0], 1);
+    for (let i = start; i <= len; i++) {  // Start from 1 to skip the header row
       const row = rows[i];
       const email = row[0]?.toString() || ''; // Convert to string, default to empty string if undefined
 
