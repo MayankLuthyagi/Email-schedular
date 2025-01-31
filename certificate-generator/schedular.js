@@ -9,7 +9,7 @@ const dayjs = require('dayjs');
 require('dotenv').config();
 
 const app = express();
-const port = 3001;
+const port = 3000;
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
@@ -17,15 +17,10 @@ mongoose.connect(process.env.MONGODB_URI)
   .catch(err => console.error('MongoDB connection error:', err));
 
 // MongoDB schemas
-const emailCredentialSchema = new mongoose.Schema({
-  user: String,
-  pass: String,
-  alias: String,
-});
-
 const scheduledEmailSchema = new mongoose.Schema({
   sheetId: String,
   sheetName: String,
+  emailId: String,
   emailSubject: String,
   emailBody: String,
   attachment: Array,
@@ -36,10 +31,16 @@ const scheduledEmailSchema = new mongoose.Schema({
 
 const emailListSchema = new mongoose.Schema({
   email: String,
+  sheetId: String,
+  sheetName: String,
+  pass: String,
+  alias: String,
+  min: Number,
+  max: Number
 });
 
 // MongoDB models
-const EmailCredential = mongoose.model('EmailCredential', emailCredentialSchema);
+
 const ScheduledEmail = mongoose.model('ScheduledEmail', scheduledEmailSchema);
 const EmailList = mongoose.model('EmailList', emailListSchema);
 
@@ -47,7 +48,7 @@ const EmailList = mongoose.model('EmailList', emailListSchema);
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'email']
 }));
 
 app.use(bodyParser.json({ limit: '100mb' }));
@@ -74,7 +75,6 @@ app.get('/scheduled-tasks', async (req, res) => {
       emailSubject: task.emailSubject,
       scheduledDateTime: task.scheduledDateTime
     }));
-
     res.json({ tasks: taskSummaries });
   } catch (error) {
     console.error('Error fetching scheduled tasks:', error);
@@ -102,87 +102,26 @@ app.delete('/delete-scheduled-task/:index', async (req, res) => {
   }
 });
 
-// Route to add email credentials
-app.post('/add-email-credentials', async (req, res) => {
-  const { user, pass, alias } = req.body;
 
-  if (!user || !pass) {
-    return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
-  }
-
-  try {
-    const emailCredential = new EmailCredential({ user, pass, alias });
-    await emailCredential.save();
-    res.json({ status: 'success', message: 'Email credentials added successfully.' });
-  } catch (error) {
-    console.error('Error adding email credentials:', error);
-    res.status(500).json({ status: 'error', message: 'An error occurred while adding credentials.' });
-  }
-});
-
-// Route to edit email credentials by index
-app.put('/edit-email-credentials/:index', async (req, res) => {
-  const { user, pass, alias } = req.body;
-  const { index } = req.params;
-
-  if (!user || !pass) {
-    return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
-  }
-
-  try {
-    const emailCredentials = await EmailCredential.find();
-    if (index < 0 || index >= emailCredentials.length) {
-      return res.status(400).json({ status: 'error', message: 'Invalid index.' });
-    }
-
-    // Update credentials
-    await EmailCredential.updateOne({ _id: emailCredentials[index]._id }, { user, pass, alias });
-
-    res.json({ status: 'success', message: 'Email credentials updated successfully.' });
-  } catch (error) {
-    console.error('Error editing email credentials:', error);
-    res.status(500).json({ status: 'error', message: 'An error occurred while editing credentials.' });
-  }
-});
-
-// Route to delete email credentials by index
-app.delete('/delete-email-credentials/:index', async (req, res) => {
-  const { index } = req.params;
-
-  try {
-    const emailCredentials = await EmailCredential.find();
-    if (index < 0 || index >= emailCredentials.length) {
-      return res.status(400).json({ status: 'error', message: 'Invalid index.' });
-    }
-
-    // Delete the credentials
-    await EmailCredential.deleteOne({ _id: emailCredentials[index]._id });
-
-    res.json({ status: 'success', message: 'Email credentials deleted successfully.' });
-  } catch (error) {
-    console.error('Error deleting email credentials:', error);
-    res.status(500).json({ status: 'error', message: 'An error occurred while deleting credentials.' });
-  }
-});
 
 // Route to get email addresses
 app.get('/get-emails', async (req, res) => {
   try {
-    const emailCredentials = await EmailCredential.find();
-    const emailAddresses = emailCredentials.map(account => account.user);
-    res.json({ emails: emailAddresses });
+    const emailCredentials = req.headers['email'];
+    res.json({ emails: emailCredentials });
   } catch (error) {
     console.error('Error fetching email accounts:', error);
     res.status(500).json({ message: 'Failed to fetch email accounts' });
   }
 });
 
+
 app.post('/schedule-emails', async (req, res) => {
-  const { sheetId, sheetName, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
+  const { sheetId, sheetName, emailId, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
 
   // Validate required fields
-  if (!sheetId || !sheetName || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
-    return res.status(400).json({ status: 'error', message: 'One or more parameters are missing.' });
+  if (!sheetId || !sheetName || !emailId || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
+    return res.status(400).json({ status: 'error', message: `One or more parameters are missing. ${sheetId} ${sheetName} ${emailId} ${emailSubject} ${emailBody} ${ranges} ${scheduledDateTime}` });
   }
 
   try {
@@ -220,6 +159,7 @@ app.post('/schedule-emails', async (req, res) => {
     const newScheduledEmail = new ScheduledEmail({
       sheetId,
       sheetName,
+      emailId,
       emailSubject,
       emailBody,
       attachment: emailAttachments, // Store processed attachments
@@ -240,11 +180,7 @@ app.post('/schedule-emails', async (req, res) => {
         console.log('Task not found.');
         return;
       }
-
-      const sheetData = await getSheetData(taskData.sheetId, taskData.sheetName);
-      await sendEmails(sheetData, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
-
-      // Remove the task after sending emails
+      await sendEmails(taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
       await ScheduledEmail.deleteOne({ cronTime });
     });
 
@@ -286,16 +222,7 @@ async function getSheetNames(sheetId) {
   }
 }
 
-// Fetch data from a specific sheet
-async function getSheetData(sheetId, sheetName) {
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: sheetName,
-    });
-      return response.data.values;
-  }
-    
 app.post('/get-sheet-names', async (req, res) => {
   const { sheetId } = req.body;
 
@@ -311,55 +238,48 @@ app.post('/get-sheet-names', async (req, res) => {
   }
 });
 
-async function sendEmails(sheetData, emailSubject, emailBody, attachment, ranges) {
-  if (!Array.isArray(sheetData) || sheetData.length === 0) {
+async function sendEmails(sheetId, sheetName, emailId, emailSubject, emailBody, attachment, ranges) {
+  if (!sheetId || !sheetName) {
     throw new Error('No data found in the Google Sheet.');
   }
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: sheetName,
+  });
+  const rows = response.data.values;
+  if (!rows || rows.length < 2) {
+    console.log("No data found or only headers exist.");
+  }
+  else {
+    const len = Math.min(ranges[1], rows.length - 1);
+    for (let i = ranges[0]; i <= len; i++) {  // Start from 1 to skip the header row
+      const row = rows[i];
+      const email = row[0]?.toString() || ''; // Convert to string, default to empty string if undefined
 
-  for (let i = 1; i < sheetData.length; i++) {
-    const row = sheetData[i];
-    const email = row[0]?.toString() || '';
+      if (!email) {
+        console.log(`Skipping row ${i} due to missing data.`);
+        continue;
+      }
 
-    if (!email) {
-      console.log(`Skipping row ${i + 1} due to missing data.`);
-      continue;
+      console.log(`Sending email ${i} of ${len}`);
+
+
+      // Check if attachment is provided before sending
+      if (attachment) {
+        await sendEmail(email, emailId, emailSubject, emailBody, attachment);
+      } else {
+        await sendEmail(email, emailId, emailSubject, emailBody, null); // Pass null or handle it in sendEmail
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
-
-    console.log(`Sending email ${i} of ${sheetData.length - 1}`);
-
-
-    const emailIndex = getEmailIndexForRange(i, ranges);
-    if (emailIndex === -1) {
-      console.log(`No email account defined for email ${i}. Skipping...`);
-      continue;
-    }
-
-    // Check if attachment is provided before sending
-    if (attachment) {
-      await sendEmail(email, emailSubject, emailBody, attachment, emailIndex);
-    } else {
-      await sendEmail(email, emailSubject, emailBody, null, emailIndex); // Pass null or handle it in sendEmail
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 5000));
   }
 }
 
 
-function getEmailIndexForRange(emailNumber, ranges) {
-  for (let i = 0; i < ranges.length; i++) {
-    const { from, to } = ranges[i];
-    if (emailNumber >= from && emailNumber <= to) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
+async function sendEmail(to, from, subject, htmlContent, attachment) {
   try {
-    const transporter = await getTransporter(emailIndex);
-
+    const transporter = await getTransporter(from);
     const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
 
     const normalizedHtmlContent = htmlContent
@@ -374,7 +294,7 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
       html: `
         <div style="line-height: 1.5; font-size: 16px; text-align: left; margin: 0;">
           ${normalizedHtmlContent.replace(/<ul>/g, '<ul style="line-height: 1.5; margin: 0;">')
-                                 .replace(/<ol>/g, '<ol style="line-height: 1.5; margin: 0;">')}
+          .replace(/<ol>/g, '<ol style="line-height: 1.5; margin: 0;">')}
         </div>
         <style>
           @media only screen and (max-width: 600px) {
@@ -399,17 +319,17 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
     if (attachment) {
       mailOptions.attachments = Array.isArray(attachment)
         ? attachment.map(att => ({
-            filename: att.filename,
-            content: att.content,
-            encoding: 'base64',
-            contentType: att.contentType,
-          }))
+          filename: att.filename,
+          content: att.content,
+          encoding: 'base64',
+          contentType: att.contentType,
+        }))
         : [{
-            filename: attachment.filename,
-            content: attachment.content,
-            encoding: 'base64',
-            contentType: attachment.contentType,
-          }];
+          filename: attachment.filename,
+          content: attachment.content,
+          encoding: 'base64',
+          contentType: attachment.contentType,
+        }];
     }
 
     await transporter.sendMail(mailOptions);
@@ -419,22 +339,22 @@ async function sendEmail(to, subject, htmlContent, attachment, emailIndex) {
   }
 }
 
-async function getTransporter(emailIndex) {
+
+async function getTransporter(email) {
   try {
     // Query the MongoDB collection to get email credentials by index
-    const emailCredentials = await EmailCredential.find().skip(emailIndex).limit(1);
-    const account = emailCredentials[0];  // Retrieve the first account
+    const account = await EmailList.findOne({ email });
 
-    if (!account) {
-      throw new Error('Email account not found.');
+    if (!account || !account.email || !account.pass) {
+      throw new Error(`Email account not found or missing credentials for: ${email}`);
     }
 
     return nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: account.user,
+        user: account.email,
         pass: account.pass,
-        alias: account.alias // Assuming alias is a field in the EmailCredentials schema
+        alias: account.alias
       }
     });
   } catch (error) {
@@ -455,23 +375,67 @@ app.get('/emails', async (req, res) => {
   }
 });
 
+
+
+app.get('/sheets-detail', async (req, res) => {
+  try {
+    const userEmail = req.headers['email'];  // Retrieve email from the header
+
+    const sheet = await EmailList.findOne({ email: userEmail });
+    if (sheet) {
+      return res.json({
+        sheetId: sheet.sheetId,
+        sheetName: sheet.sheetName,
+        min: sheet.min,
+        max: sheet.max
+      });
+    } else {
+      return res.status(404).json({ message: "No user found with this email." });
+    }
+  } catch (error) {
+    console.error('Error fetching emails:', error);
+    res.status(500).json({ error: 'Failed to fetch emails' });
+  }
+});
+
+app.get('/credential-details', async (req, res) => {
+  try {
+    const userEmail = req.headers['email'];  // Retrieve email from the header
+
+    const sheet = await EmailList.findOne({ email: userEmail });
+    if (sheet) {
+      return res.json({
+        email: sheet.email,
+        pass: sheet.pass,
+        alias: sheet.alias
+      });
+    } else {
+      return res.status(404).json({ message: "No user found with this email." });
+    }
+  } catch (error) {
+    console.error('Error fetching emails:', error);
+    res.status(500).json({ error: 'Failed to fetch emails' });
+  }
+});
+
 // Route to add a new email to the email list collection
 app.post('/pemails', async (req, res) => {
-  const newEmail = req.body.email;
+  const { email, sheetId, sheetName, pass, alias, min, max } = req.body;
 
-  if (!newEmail) {
+  if (!email || !sheetId || !sheetName || !min || !max || !pass || !alias) {
     return res.status(400).json({ error: 'Email is required' });
   }
 
   try {
     // Check if the email already exists in the database
-    const existingEmail = await EmailList.findOne({ email: newEmail });
+    const existingEmail = await EmailList.findOne({ email: email });
     if (existingEmail) {
       return res.status(400).json({ error: 'Email already exists' });
     }
 
     // Add the new email
-    const emailEntry = new EmailList({ email: newEmail });
+    const emailEntry = new EmailList({ email, sheetId, sheetName, pass, alias, min, max });
+
     await emailEntry.save();
 
     res.status(201).json({ message: 'Email added' });
@@ -492,7 +456,7 @@ app.delete('/demails', async (req, res) => {
   try {
     // Delete the email
     const result = await EmailList.deleteOne({ email: emailToDelete });
-    
+
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Email not found' });
     }
@@ -505,7 +469,7 @@ app.delete('/demails', async (req, res) => {
 });
 
 cron.schedule('*/5 * * * *', () => {
-  console.log('server is running');
+  console.log('server is running new');
 });
 
 app.listen(port, () => {
