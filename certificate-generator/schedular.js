@@ -21,6 +21,7 @@ const scheduledEmailSchema = new mongoose.Schema({
   sheetId: String,
   sheetName: String,
   emailId: String,
+  pass: String,
   emailSubject: String,
   emailBody: String,
   attachment: Array,
@@ -28,7 +29,9 @@ const scheduledEmailSchema = new mongoose.Schema({
   scheduledDateTime: String,
   cronTime: String,
 });
-
+const emailAdmin = new mongoose.Schema({
+  authEmail: String,
+});
 const emailListSchema = new mongoose.Schema({
   email: String,
   sheetId: String,
@@ -43,6 +46,7 @@ const emailListSchema = new mongoose.Schema({
 
 const ScheduledEmail = mongoose.model('ScheduledEmail', scheduledEmailSchema);
 const EmailList = mongoose.model('EmailList', emailListSchema);
+const EmailAdmin = mongoose.model('EmailAdmin', emailAdmin);
 
 // CORS configuration
 app.use(cors({
@@ -117,11 +121,11 @@ app.get('/get-emails', async (req, res) => {
 
 
 app.post('/schedule-emails', async (req, res) => {
-  const { sheetId, sheetName, emailId, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
+  const { sheetId, sheetName, email, pass, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
 
   // Validate required fields
-  if (!sheetId || !sheetName || !emailId || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
-    return res.status(400).json({ status: 'error', message: `One or more parameters are missing. ${sheetId} ${sheetName} ${emailId} ${emailSubject} ${emailBody} ${ranges} ${scheduledDateTime}` });
+  if (!sheetId || !sheetName || !pass || !email || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
+    return res.status(400).json({ status: 'error', message: `One or more parameters are missing. ${sheetId}, ${sheetName}, ${email}, ${pass}, ${emailSubject}, ${emailBody}, ${attachment}, ${ranges}, ${scheduledDateTime}` });
   }
 
   try {
@@ -159,7 +163,8 @@ app.post('/schedule-emails', async (req, res) => {
     const newScheduledEmail = new ScheduledEmail({
       sheetId,
       sheetName,
-      emailId,
+      emailId: email,
+      pass,
       emailSubject,
       emailBody,
       attachment: emailAttachments, // Store processed attachments
@@ -180,7 +185,7 @@ app.post('/schedule-emails', async (req, res) => {
         console.log('Task not found.');
         return;
       }
-      await sendEmails(taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
+      await sendEmails(taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.pass, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
       await ScheduledEmail.deleteOne({ cronTime });
     });
 
@@ -238,7 +243,7 @@ app.post('/get-sheet-names', async (req, res) => {
   }
 });
 
-async function sendEmails(sheetId, sheetName, emailId, emailSubject, emailBody, attachment, ranges) {
+async function sendEmails(sheetId, sheetName, emailId, pass, emailSubject, emailBody, attachment, ranges) {
   if (!sheetId || !sheetName) {
     throw new Error('No data found in the Google Sheet.');
   }
@@ -267,9 +272,9 @@ async function sendEmails(sheetId, sheetName, emailId, emailSubject, emailBody, 
 
       // Check if attachment is provided before sending
       if (attachment) {
-        await sendEmail(email, emailId, emailSubject, emailBody, attachment);
+        await sendEmail(email, emailId, pass, emailSubject, emailBody, attachment);
       } else {
-        await sendEmail(email, emailId, emailSubject, emailBody, null); // Pass null or handle it in sendEmail
+        await sendEmail(email, emailId, pass, emailSubject, emailBody, null); // Pass null or handle it in sendEmail
       }
 
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -278,10 +283,10 @@ async function sendEmails(sheetId, sheetName, emailId, emailSubject, emailBody, 
 }
 
 
-async function sendEmail(to, from, subject, htmlContent, attachment) {
+async function sendEmail(to, from, pass, subject, htmlContent, attachment) {
   try {
-    const transporter = await getTransporter(from);
-    const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
+    const transporter = await getTransporter(from, pass);
+    const fromAddress = transporter.options.auth.user;
 
     const normalizedHtmlContent = htmlContent
       .replace(/\n+/g, ' ')  // Replace multiple newlines with a single space
@@ -341,21 +346,18 @@ async function sendEmail(to, from, subject, htmlContent, attachment) {
 }
 
 
-async function getTransporter(email) {
+async function getTransporter(email, pass) {
   try {
-    // Query the MongoDB collection to get email credentials by index
-    const account = await EmailList.findOne({ email });
 
-    if (!account || !account.email || !account.pass) {
+    if (!email || !pass) {
       throw new Error(`Email account not found or missing credentials for: ${email}`);
     }
 
     return nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: account.email,
-        pass: account.pass,
-        alias: account.alias
+        user: email,
+        pass: pass
       }
     });
   } catch (error) {
@@ -375,29 +377,38 @@ app.get('/emails', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch emails' });
   }
 });
-
-
-
-app.get('/sheets-detail', async (req, res) => {
+app.get('/alias', async (req, res) => {
   try {
-    const userEmail = req.headers['email'];  // Retrieve email from the header
+    const alias = await EmailList.find();
+    const aliasAddresses = alias.map(emailEntry => emailEntry.alias);
+    res.json(aliasAddresses);
+  } catch (error) {
+    console.error('Error fetching alias:', error);
+    res.status(500).json({ error: 'Failed to fetch alias' });
+  }
+});
 
-    const sheet = await EmailList.findOne({ email: userEmail });
-    if (sheet) {
-      return res.json({
-        sheetId: sheet.sheetId,
-        sheetName: sheet.sheetName,
-        min: sheet.min,
-        max: sheet.max
-      });
-    } else {
-      return res.status(404).json({ message: "No user found with this email." });
-    }
+app.get('/authemails', async (req, res) => {
+  try {
+    const emails = await EmailAdmin.find();
+    const emailAddresses = emails.map(emailEntry => emailEntry.authEmail);
+    res.json(emailAddresses);
   } catch (error) {
     console.error('Error fetching emails:', error);
     res.status(500).json({ error: 'Failed to fetch emails' });
   }
 });
+
+app.get('/sheets-detail', async (req, res) => {
+  try {
+    const data = await EmailList.find(); // Fetch all email entries from the database
+    res.json(data); // Send the complete data as JSON response
+  } catch (error) {
+    console.error('Error fetching emails:', error);
+    res.status(500).json({ error: 'Failed to fetch emails' });
+  }
+});
+
 
 app.get('/credential-details', async (req, res) => {
   try {
@@ -445,10 +456,36 @@ app.post('/pemails', async (req, res) => {
     res.status(500).json({ error: 'Failed to add email' });
   }
 });
+app.post('/pauthemails', async (req, res) => {
+  const { authEmail } = req.body;
+
+  if (!authEmail) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    // Check if the email already exists in the database
+    const existingEmail = await EmailAdmin.findOne({ authEmail });
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+
+    // Add the new email
+    const emailEntry = new EmailAdmin({ authEmail });
+
+    await emailEntry.save();
+
+    res.status(201).json({ message: 'Email added' });
+  } catch (error) {
+    console.error('Error adding email:', error);
+    res.status(500).json({ error: 'Failed to add email' });
+  }
+});
+
 
 // Route to delete an email from the email list collection
 app.delete('/demails', async (req, res) => {
-  const emailToDelete = req.body.email;
+  const emailToDelete = req.body.alias;
 
   if (!emailToDelete) {
     return res.status(400).json({ error: 'Email is required' });
@@ -456,7 +493,28 @@ app.delete('/demails', async (req, res) => {
 
   try {
     // Delete the email
-    const result = await EmailList.deleteOne({ email: emailToDelete });
+    const result = await EmailList.deleteOne({ alias: emailToDelete });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    res.json({ message: 'Email deleted' });
+  } catch (error) {
+    console.error('Error deleting email:', error);
+    res.status(500).json({ error: 'Failed to delete email' });
+  }
+});
+app.delete('/dauthemails', async (req, res) => {
+  const emailToDelete = req.body.authEmail;
+
+  if (!emailToDelete) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    // Delete the email
+    const result = await EmailAdmin.deleteOne({ authEmail: emailToDelete });
 
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Email not found' });
