@@ -357,16 +357,6 @@ app.get('/emails', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch emails' });
   }
 });
-app.get('/alias', async (req, res) => {
-  try {
-    const alias = await EmailList.find();
-    const aliasAddresses = alias.map(emailEntry => emailEntry.alias);
-    res.json(aliasAddresses);
-  } catch (error) {
-    console.error('Error fetching alias:', error);
-    res.status(500).json({ error: 'Failed to fetch alias' });
-  }
-});
 
 app.get('/authemails', async (req, res) => {
   try {
