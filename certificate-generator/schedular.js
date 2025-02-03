@@ -22,6 +22,7 @@ const scheduledEmailSchema = new mongoose.Schema({
   sheetName: String,
   emailId: String,
   pass: String,
+  alias: String,
   emailSubject: String,
   emailBody: String,
   attachment: Array,
@@ -77,7 +78,8 @@ app.get('/scheduled-tasks', async (req, res) => {
     const taskSummaries = tasks.map((task, index) => ({
       index,
       emailSubject: task.emailSubject,
-      scheduledDateTime: task.scheduledDateTime
+      scheduledDateTime: task.scheduledDateTime,
+      alias: task.alias
     }));
     res.json({ tasks: taskSummaries });
   } catch (error) {
@@ -118,84 +120,6 @@ app.get('/get-emails', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch email accounts' });
   }
 });
-
-
-app.post('/schedule-emails', async (req, res) => {
-  const { sheetId, sheetName, email, pass, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
-
-  // Validate required fields
-  if (!sheetId || !sheetName || !pass || !email || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
-    return res.status(400).json({ status: 'error', message: `One or more parameters are missing. ${sheetId}, ${sheetName}, ${email}, ${pass}, ${emailSubject}, ${emailBody}, ${attachment}, ${ranges}, ${scheduledDateTime}` });
-  }
-
-  try {
-    // Validate that the scheduled time is in the future
-    const scheduledDate = dayjs(scheduledDateTime);
-    const now = dayjs();
-    if (scheduledDate.isBefore(now)) {
-      return res.status(400).json({ status: 'error', message: 'Scheduled time must be in the future.' });
-    }
-
-    // Convert scheduledDate to cron format
-    const cronTime = `${scheduledDate.second()} ${scheduledDate.minute()} ${scheduledDate.hour()} ${scheduledDate.date()} ${scheduledDate.month() + 1} *`;
-
-    // Handle attachments - single, multiple, or null
-    let emailAttachments = null;
-    if (attachment) {
-      if (Array.isArray(attachment)) {
-        // If it's an array, assign the array directly
-        emailAttachments = attachment.map(att => ({
-          filename: att.filename,
-          content: att.content,
-          contentType: att.contentType
-        }));
-      } else {
-        // If it's a single object, wrap it in an array
-        emailAttachments = [{
-          filename: attachment.filename,
-          content: attachment.content,
-          contentType: attachment.contentType
-        }];
-      }
-    }
-
-    // Add new task
-    const newScheduledEmail = new ScheduledEmail({
-      sheetId,
-      sheetName,
-      emailId: email,
-      pass,
-      emailSubject,
-      emailBody,
-      attachment: emailAttachments, // Store processed attachments
-      ranges,
-      scheduledDateTime,
-      cronTime
-    });
-
-    // Save the scheduled email to the database
-    await newScheduledEmail.save();
-
-    // Schedule the cron job to send emails at the specified time
-    cron.schedule(cronTime, async () => {
-      console.log(`Sending scheduled emails at ${scheduledDate.format()}`);
-
-      const taskData = await ScheduledEmail.findOne({ cronTime });
-      if (!taskData) {
-        console.log('Task not found.');
-        return;
-      }
-      await sendEmails(taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.pass, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
-      await ScheduledEmail.deleteOne({ cronTime });
-    });
-
-    res.json({ status: 'success', message: `Emails scheduled successfully for ${scheduledDate.format()}` });
-  } catch (error) {
-    console.error('Error in /schedule-emails:', error);
-    res.status(500).json({ status: 'error', message: 'An error occurred while scheduling emails.' });
-  }
-});
-
 async function getSheetNames(sheetId) {
   try {
     // Fetch the spreadsheet metadata to get sheet names
@@ -243,22 +167,105 @@ app.post('/get-sheet-names', async (req, res) => {
   }
 });
 
-async function sendEmails(sheetId, sheetName, emailId, pass, emailSubject, emailBody, attachment, ranges) {
-  if (!sheetId || !sheetName) {
-    throw new Error('No data found in the Google Sheet.');
+app.post('/schedule-emails', async (req, res) => {
+  const { sheetId, sheetName, email, pass, alias, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
+
+  // Validate required fields
+  if (!sheetId || !sheetName || !pass || !email || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
+    return res.status(400).json({ status: 'error', message: `One or more parameters are missing.` });
   }
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: sheetName,
-  });
-  const rows = response.data.values;
-  if (!rows || rows.length < 2) {
-    console.log("No data found or only headers exist.");
+
+  try {
+    // Validate that the scheduled time is in the future
+    const scheduledDate = dayjs(scheduledDateTime);
+    const now = dayjs();
+    if (scheduledDate.isBefore(now)) {
+      return res.status(400).json({ status: 'error', message: 'Scheduled time must be in the future.' });
+    }
+
+    // Convert scheduledDate to cron format
+    const cronTime = `${scheduledDate.second()} ${scheduledDate.minute()} ${scheduledDate.hour()} ${scheduledDate.date()} ${scheduledDate.month() + 1} *`;
+
+    // Handle attachments - single, multiple, or null
+    let emailAttachments = null;
+    if (attachment) {
+      if (Array.isArray(attachment)) {
+        // If it's an array, assign the array directly
+        emailAttachments = attachment.map(att => ({
+          filename: att.filename,
+          content: att.content,
+          contentType: att.contentType
+        }));
+      } else {
+        // If it's a single object, wrap it in an array
+        emailAttachments = [{
+          filename: attachment.filename,
+          content: attachment.content,
+          contentType: attachment.contentType
+        }];
+      }
+    }
+
+    // Add new task
+    const newScheduledEmail = new ScheduledEmail({
+      sheetId,
+      sheetName,
+      emailId: email,
+      pass,
+      alias,
+      emailSubject,
+      emailBody,
+      attachment: emailAttachments, // Store processed attachments
+      ranges,
+      scheduledDateTime,
+      cronTime
+    });
+
+    // Save the scheduled email to the database
+    await newScheduledEmail.save();
+
+    // Schedule the cron job to send emails at the specified time
+    cron.schedule(cronTime, async () => {
+      console.log(`Scheduled job triggered at ${scheduledDate.format()}`);
+
+      const taskData = await ScheduledEmail.findOne({ cronTime });
+      if (!taskData) {
+        console.log('Task not found.');
+        return;
+      }
+
+      await sendEmails(taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.pass, taskData.alias, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
+      await ScheduledEmail.deleteOne({ cronTime });
+    });
+
+    res.json({ status: 'success', message: `Emails scheduled successfully for ${scheduledDate.format()}` });
+  } catch (error) {
+    console.error('Error in /schedule-emails:', error);
+    res.status(500).json({ status: 'error', message: 'An error occurred while scheduling emails.' });
   }
-  else {
+});
+
+async function sendEmails(sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
+  try {
+    if (!sheetId || !sheetName) {
+      throw new Error('No data found in the Google Sheet.');
+    }
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: sheetName,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 2) {
+      console.log("No data found or only headers exist.");
+      return;  // Exit early if no data is found
+    }
+
     const len = Math.min(ranges[1], rows.length - 1);
     const start = Math.max(ranges[0], 1);
-    for (let i = start; i <= len; i++) {  // Start from 1 to skip the header row
+
+    for (let i = start; i <= len; i++) {
       const row = rows[i];
       const email = row[0]?.toString() || ''; // Convert to string, default to empty string if undefined
 
@@ -269,57 +276,30 @@ async function sendEmails(sheetId, sheetName, emailId, pass, emailSubject, email
 
       console.log(`Sending email ${i} of ${len}`);
 
-
       // Check if attachment is provided before sending
       if (attachment) {
-        await sendEmail(email, emailId, pass, emailSubject, emailBody, attachment);
+        await sendEmail(email, emailId, alias, pass, emailSubject, emailBody, attachment);
       } else {
-        await sendEmail(email, emailId, pass, emailSubject, emailBody, null); // Pass null or handle it in sendEmail
+        await sendEmail(email, emailId, alias, pass, emailSubject, emailBody, null);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 5000));  // Wait for 5 seconds before sending the next email
     }
+  } catch (error) {
+    console.error('Error in sendEmails function:', error);
   }
 }
 
-
-async function sendEmail(to, from, pass, subject, htmlContent, attachment) {
+async function sendEmail(to, from, alias, pass, subject, htmlContent, attachment) {
   try {
-    const transporter = await getTransporter(from, pass);
-    const fromAddress = transporter.options.auth.user;
-
-    const normalizedHtmlContent = htmlContent
-      .replace(/\n+/g, ' ')  // Replace multiple newlines with a single space
-      .replace(/\s+/g, ' ')  // Replace multiple spaces with a single space
-      .trim();
+    const transporter = await getTransporter(from, pass, alias);
+    const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
 
     const mailOptions = {
       from: fromAddress,
       to,
       subject,
-      html: `
-        <div style="line-height: 1.5; font-size: 16px; text-align: left; margin: 0;">
-          ${normalizedHtmlContent.replace(/<ul>/g, '<ul style="line-height: 1.5; margin: 0;">')
-          .replace(/<ol>/g, '<ol style="line-height: 1.5; margin: 0;">')}
-        </div>
-        <style>
-          @media only screen and (max-width: 600px) {
-            div {
-              line-height: 1.5;
-              font-size: 14px;
-              word-wrap: break-word;
-              text-align: left;
-            }
-          }
-          p {
-            margin: 0 0 0.5em 0; /* Reduced paragraph spacing */
-            padding: 0; /* Ensure no padding is added */
-          }
-          ul, ol {
-            margin: 0 0 0.5em 0; /* Consistent list spacing */
-            padding: 0;
-          }
-        </style>`,
+      html: htmlContent,
     };
 
     if (attachment) {
@@ -341,12 +321,11 @@ async function sendEmail(to, from, pass, subject, htmlContent, attachment) {
     await transporter.sendMail(mailOptions);
     console.log(`Email sent successfully to ${to}`);
   } catch (error) {
-    console.error(`Error sending email to ${to}:`, error);
+    console.error('Error in sendEmail:', error);
   }
 }
 
-
-async function getTransporter(email, pass) {
+async function getTransporter(email, pass, alias) {
   try {
 
     if (!email || !pass) {
@@ -357,7 +336,8 @@ async function getTransporter(email, pass) {
       service: 'gmail',
       auth: {
         user: email,
-        pass: pass
+        pass: pass,
+        alias: alias
       }
     });
   } catch (error) {
@@ -485,7 +465,7 @@ app.post('/pauthemails', async (req, res) => {
 
 // Route to delete an email from the email list collection
 app.delete('/demails', async (req, res) => {
-  const emailToDelete = req.body.alias;
+  const emailToDelete = req.body.email;
 
   if (!emailToDelete) {
     return res.status(400).json({ error: 'Email is required' });
@@ -493,7 +473,7 @@ app.delete('/demails', async (req, res) => {
 
   try {
     // Delete the email
-    const result = await EmailList.deleteOne({ alias: emailToDelete });
+    const result = await EmailList.deleteOne({ email: emailToDelete });
 
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Email not found' });
@@ -526,6 +506,40 @@ app.delete('/dauthemails', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete email' });
   }
 });
+app.put('/update-email', async (req, res) => {
+  const { email, sheetId, sheetName, min, max, pass, alias } = req.body;
+
+  if (!email || !sheetId || !sheetName || !min || !max || !pass || !alias) {
+    return res.status(400).json({ status: 'error', message: 'All fields are required' });
+  }
+
+  try {
+    // Update the email details in the EmailList collection
+    const updatedEmail = await EmailList.findOneAndUpdate(
+      { email }, // Search for the document with this email
+      {
+        sheetId,
+        sheetName,
+        min,
+        max,
+        pass,
+        alias
+      }, // Fields to update
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedEmail) {
+      return res.status(404).json({ status: 'error', message: 'Email not found' });
+    }
+
+    res.status(200).json({ status: 'success', message: 'Email updated successfully', updatedEmail });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ status: 'error', message: 'Failed to update email' });
+  }
+});
+
+
 
 cron.schedule('*/5 * * * *', () => {
   console.log('server is running new');
