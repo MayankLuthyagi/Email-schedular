@@ -292,8 +292,8 @@ async function sendEmails(sheetId, sheetName, emailId, pass, alias, emailSubject
 
 async function sendEmail(to, from, alias, pass, subject, htmlContent, attachment) {
   try {
-    const transporter = await getTransporter(from, pass, alias);
-    const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
+    const transporter = await getTransporter(from, pass);
+    const fromAddress = alias ? alias : from;
 
     const mailOptions = {
       from: fromAddress,
@@ -325,7 +325,7 @@ async function sendEmail(to, from, alias, pass, subject, htmlContent, attachment
   }
 }
 
-async function getTransporter(email, pass, alias) {
+async function getTransporter(email, pass) {
   try {
 
     if (!email || !pass) {
@@ -336,8 +336,7 @@ async function getTransporter(email, pass, alias) {
       service: 'gmail',
       auth: {
         user: email,
-        pass: pass,
-        alias: alias
+        pass: pass
       }
     });
   } catch (error) {
