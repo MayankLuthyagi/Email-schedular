@@ -292,8 +292,8 @@ async function sendEmails(sheetId, sheetName, emailId, pass, alias, emailSubject
 
 async function sendEmail(to, from, alias, pass, subject, htmlContent, attachment) {
   try {
-    const transporter = await getTransporter(from, pass);
-    const fromAddress = alias ? alias : from;
+    const transporter = await getTransporter(alias, pass);
+    const fromAddress = transporter.options.auth.user;
 
     const mailOptions = {
       from: fromAddress,
