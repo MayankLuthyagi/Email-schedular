@@ -377,6 +377,33 @@ app.get('/sheets-detail', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch emails' });
   }
 });
+app.get('/email-detail', async (req, res) => {
+  try {
+    const emailItem = req.query.emailItem; // Fix: Get emailItem from query params
+    if (!emailItem) {
+      return res.status(400).json({ error: 'Missing emailItem' });
+    }
+
+    const email = await EmailList.findOne({ email: emailItem });
+
+    if (email) {
+      return res.json({
+        sheetId: email.sheetId,
+        sheetName: email.sheetName,
+        min: email.min,
+        max: email.max,
+        pass: email.pass,
+        alias: email.alias,
+      });
+    } else {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching emails:', error);
+    res.status(500).json({ error: 'Failed to fetch emails' });
+  }
+});
+
 
 
 app.get('/credential-details', async (req, res) => {
