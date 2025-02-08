@@ -262,35 +262,29 @@ async function sendEmails(sheetId, sheetName, emailId, pass, alias, emailSubject
       return;  // Exit early if no data is found
     }
 
-    const len = Math.min(ranges[1], rows.length - 1);
+    const len = Math.min(ranges[1] + 1, rows.length - 1);
     const start = Math.max(ranges[0], 1);
-
+    const array_email = [];
     for (let i = start; i <= len; i++) {
       const row = rows[i];
       const email = row[0]?.toString() || ''; // Convert to string, default to empty string if undefined
-
       if (!email) {
-        console.log(`Skipping row ${i} due to missing data.`);
+        console.log(`Skipping row ${i} in google due to missing data.`);
         continue;
       }
-
-      console.log(`Sending email ${i} of ${len}`);
-
-      // Check if attachment is provided before sending
-      if (attachment) {
-        await sendEmail(email, emailId, alias, pass, emailSubject, emailBody, attachment);
-      } else {
-        await sendEmail(email, emailId, alias, pass, emailSubject, emailBody, null);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 5000));  // Wait for 5 seconds before sending the next email
+      array_email.push(email);
+    }
+    if (attachment) {
+      await sendEmail(array_email[0], emailId, array_email.slice(1), alias, pass, emailSubject, emailBody, attachment);
+    } else {
+      await sendEmail(array_email[0], emailId, array_email.slice(1), alias, pass, emailSubject, emailBody, null);
     }
   } catch (error) {
     console.error('Error in sendEmails function:', error);
   }
 }
 
-async function sendEmail(to, from, alias, pass, subject, htmlContent, attachment) {
+async function sendEmail(to, from, bcc, alias, pass, subject, htmlContent, attachment) {
   try {
     const transporter = await getTransporter(alias, pass);
     const fromAddress = transporter.options.auth.user;
@@ -298,6 +292,7 @@ async function sendEmail(to, from, alias, pass, subject, htmlContent, attachment
     const mailOptions = {
       from: fromAddress,
       to,
+      bcc,
       subject,
       html: htmlContent,
     };
@@ -319,7 +314,7 @@ async function sendEmail(to, from, alias, pass, subject, htmlContent, attachment
     }
 
     await transporter.sendMail(mailOptions);
-    console.log(`Email sent successfully to ${to}`);
+    console.log(`Email sent successfully to ${bcc}`);
   } catch (error) {
     console.error('Error in sendEmail:', error);
   }
@@ -339,6 +334,7 @@ async function getTransporter(email, pass) {
         pass: pass
       }
     });
+
   } catch (error) {
     console.error('Error getting transporter:', error);
     throw error;
