@@ -353,6 +353,17 @@ app.get('/emails', async (req, res) => {
   }
 });
 
+// Route to get all emails from the email list collection
+app.get('/alias', async (req, res) => {
+  try {
+    const emails = await EmailList.find();
+    const emailAddresses = emails.map(emailEntry => emailEntry.alias);
+    res.json(emailAddresses);
+  } catch (error) {
+    console.error('Error fetching emails:', error);
+    res.status(500).json({ error: 'Failed to fetch emails' });
+  }
+});
 app.get('/authemails', async (req, res) => {
   try {
     const emails = await EmailAdmin.find();
@@ -380,16 +391,17 @@ app.get('/email-detail', async (req, res) => {
       return res.status(400).json({ error: 'Missing emailItem' });
     }
 
-    const email = await EmailList.findOne({ email: emailItem });
+    const data = await EmailList.findOne({ alias: emailItem });
 
-    if (email) {
+    if (data) {
       return res.json({
-        sheetId: email.sheetId,
-        sheetName: email.sheetName,
-        min: email.min,
-        max: email.max,
-        pass: email.pass,
-        alias: email.alias,
+        email: data.email,
+        sheetId: data.sheetId,
+        sheetName: data.sheetName,
+        min: data.min,
+        max: data.max,
+        pass: data.pass,
+        alias: data.alias,
       });
     } else {
       return res.status(404).json({ error: 'Email not found' });
@@ -432,7 +444,7 @@ app.post('/pemails', async (req, res) => {
 
   try {
     // Check if the email already exists in the database
-    const existingEmail = await EmailList.findOne({ email: email });
+    const existingEmail = await EmailList.findOne({ alias: alias });
     if (existingEmail) {
       return res.status(400).json({ error: 'Email already exists' });
     }
@@ -477,7 +489,7 @@ app.post('/pauthemails', async (req, res) => {
 
 // Route to delete an email from the email list collection
 app.delete('/demails', async (req, res) => {
-  const emailToDelete = req.body.email;
+  const emailToDelete = req.body.alias;
 
   if (!emailToDelete) {
     return res.status(400).json({ error: 'Email is required' });
@@ -485,7 +497,7 @@ app.delete('/demails', async (req, res) => {
 
   try {
     // Delete the email
-    const result = await EmailList.deleteOne({ email: emailToDelete });
+    const result = await EmailList.deleteOne({ alias: emailToDelete });
 
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Email not found' });
@@ -528,8 +540,9 @@ app.put('/update-email', async (req, res) => {
   try {
     // Update the email details in the EmailList collection
     const updatedEmail = await EmailList.findOneAndUpdate(
-      { email }, // Search for the document with this email
+      { alias }, // Search for the document with this email
       {
+        email,
         sheetId,
         sheetName,
         min,
