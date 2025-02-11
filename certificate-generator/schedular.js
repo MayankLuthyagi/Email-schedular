@@ -583,7 +583,7 @@ app.put('/update-email', async (req, res) => {
   try {
     // Check if new data already exists (excluding the same alias)
     const existingData = await EmailList.findOne({
-      new_email, alias, new_sheetId, new_sheetName, new_min, new_max, new_pass
+      min, alias, sheetId: new_sheetId, sheetName: new_sheetName, min: new_min, max: new_max, pass: new_pass, email: new_email
     });
 
     if (existingData) {
