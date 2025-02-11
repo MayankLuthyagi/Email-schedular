@@ -10,12 +10,11 @@ require('dotenv').config();
 
 const app = express();
 const port = 3000;
-
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
-
+const AutoIncrement = require('mongoose-sequence')(mongoose);
 // MongoDB schemas
 const scheduledEmailSchema = new mongoose.Schema({
   sheetId: String,
@@ -34,6 +33,7 @@ const emailAdmin = new mongoose.Schema({
   authEmail: String,
 });
 const emailListSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
   email: String,
   sheetId: String,
   sheetName: String,
@@ -42,13 +42,12 @@ const emailListSchema = new mongoose.Schema({
   min: Number,
   max: Number
 });
-
+emailListSchema.plugin(AutoIncrement, { inc_field: 'id' });
 // MongoDB models
 
 const ScheduledEmail = mongoose.model('ScheduledEmail', scheduledEmailSchema);
 const EmailList = mongoose.model('EmailList', emailListSchema);
 const EmailAdmin = mongoose.model('EmailAdmin', emailAdmin);
-
 // CORS configuration
 app.use(cors({
   origin: '*',
@@ -274,24 +273,27 @@ async function sendEmails(sheetId, sheetName, emailId, pass, alias, emailSubject
       }
       array_email.push(email);
     }
+    if (array_email.length == 0) {
+      return console.error('Google Sheet is empty');
+    }
     if (attachment) {
-      await sendEmail(array_email[0], emailId, array_email.slice(1), alias, pass, emailSubject, emailBody, attachment);
+      await sendEmail(emailId, array_email, alias, pass, emailSubject, emailBody, attachment);
     } else {
-      await sendEmail(array_email[0], emailId, array_email.slice(1), alias, pass, emailSubject, emailBody, null);
+      await sendEmail(emailId, array_email, alias, pass, emailSubject, emailBody, null);
     }
   } catch (error) {
     console.error('Error in sendEmails function:', error);
   }
 }
 
-async function sendEmail(to, from, bcc, alias, pass, subject, htmlContent, attachment) {
+async function sendEmail(emailId, bcc, alias, pass, subject, htmlContent, attachment) {
   try {
     const transporter = await getTransporter(alias, pass);
     const fromAddress = transporter.options.auth.user;
 
     const mailOptions = {
       from: fromAddress,
-      to,
+      to: emailId,
       bcc,
       subject,
       html: htmlContent,
@@ -364,6 +366,15 @@ app.get('/alias', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch emails' });
   }
 });
+app.get('/emailObj', async (req, res) => {
+  try {
+    const data = await EmailList.find();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching emails:', error);
+    res.status(500).json({ error: 'Failed to fetch emails' });
+  }
+});
 app.get('/authemails', async (req, res) => {
   try {
     const emails = await EmailAdmin.find();
@@ -391,7 +402,7 @@ app.get('/email-detail', async (req, res) => {
       return res.status(400).json({ error: 'Missing emailItem' });
     }
 
-    const data = await EmailList.findOne({ alias: emailItem });
+    const data = await EmailList.findOne(emailItem);
 
     if (data) {
       return res.json({
@@ -439,27 +450,43 @@ app.post('/pemails', async (req, res) => {
   const { email, sheetId, sheetName, pass, alias, min, max } = req.body;
 
   if (!email || !sheetId || !sheetName || !min || !max || !pass || !alias) {
-    return res.status(400).json({ error: 'Email is required' });
+    return res.status(400).json({ error: 'All fields are required' });
   }
 
   try {
-    // Check if the email already exists in the database
-    const existingEmail = await EmailList.findOne({ alias: alias });
-    if (existingEmail) {
-      return res.status(400).json({ error: 'Email already exists' });
+    // Step 1: Find all entries with the same alias, sheetId, and sheetName
+    const existingEntries = await EmailList.find({ pass, alias, sheetId, sheetName });
+
+    // If no existing entries, add a new one
+    if (!existingEntries) {
+      const emailEntry = new EmailList({ email, sheetId, sheetName, pass, alias, min, max });
+      await emailEntry.save();
+      return res.status(201).json({ message: 'Email added successfully', id: emailEntry.id });
     }
 
-    // Add the new email
-    const emailEntry = new EmailList({ email, sheetId, sheetName, pass, alias, min, max });
+    // Step 2: Check if the min-max range overlaps with any existing entry
+    const isOverlap = existingEntries.some(entry =>
+      (min >= entry.min && min <= entry.max) ||
+      (max >= entry.min && max <= entry.max) ||
+      (entry.min >= min && entry.max <= max)
+    );
 
+    if (isOverlap) {
+      return res.status(400).json({ status: 'error', error: 'Range Overlapped' });
+    }
+
+    // Step 3: Add the new email entry since no overlap was found
+    const emailEntry = new EmailList({ email, sheetId, sheetName, pass, alias, min, max });
     await emailEntry.save();
 
-    res.status(201).json({ message: 'Email added' });
+    res.status(201).json({ message: 'Email added successfully', id: emailEntry.id });
   } catch (error) {
     console.error('Error adding email:', error);
     res.status(500).json({ error: 'Failed to add email' });
   }
 });
+
+
 app.post('/pauthemails', async (req, res) => {
   const { authEmail } = req.body;
 
@@ -489,26 +516,28 @@ app.post('/pauthemails', async (req, res) => {
 
 // Route to delete an email from the email list collection
 app.delete('/demails', async (req, res) => {
-  const emailToDelete = req.body.alias;
+  const emailObjToDelete = req.body; // Expect full object in the request body
 
-  if (!emailToDelete) {
-    return res.status(400).json({ error: 'Email is required' });
+  if (!emailObjToDelete || Object.keys(emailObjToDelete).length === 0) {
+    return res.status(400).json({ error: 'Email object is required' });
   }
 
   try {
-    // Delete the email
-    const result = await EmailList.deleteOne({ alias: emailToDelete });
+    // Attempt to delete a document that matches all provided fields
+    const result = await EmailList.deleteOne(emailObjToDelete);
 
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Email not found' });
     }
 
-    res.json({ message: 'Email deleted' });
+    res.json({ message: 'Email deleted successfully' });
   } catch (error) {
     console.error('Error deleting email:', error);
     res.status(500).json({ error: 'Failed to delete email' });
   }
 });
+
+
 app.delete('/dauthemails', async (req, res) => {
   const emailToDelete = req.body.authEmail;
 
@@ -530,40 +559,48 @@ app.delete('/dauthemails', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete email' });
   }
 });
-app.put('/update-email', async (req, res) => {
-  const { email, sheetId, sheetName, min, max, pass, alias } = req.body;
 
-  if (!email || !sheetId || !sheetName || !min || !max || !pass || !alias) {
-    return res.status(400).json({ status: 'error', message: 'All fields are required' });
+app.put('/update-email', async (req, res) => {
+  const { editObj, updatedEmail } = req.body;
+
+  if (!editObj || !updatedEmail) {
+    return res.status(400).json({ status: 'error', message: 'Invalid request data' });
   }
 
+
+  const { id, email, sheetId, sheetName, min, max, pass, alias } = editObj;
+  const { new_email, new_sheetId, new_sheetName, new_min, new_max, new_pass, new_alias } = updatedEmail;
+
+  if (!email || !alias || !new_sheetId || !new_sheetName || !new_min || !new_max || !new_pass) {
+    return res.status(400).json({ status: 'error', message: 'All fields are required' });
+  }
   try {
-    // Update the email details in the EmailList collection
-    const updatedEmail = await EmailList.findOneAndUpdate(
-      { alias }, // Search for the document with this email
-      {
-        email,
-        sheetId,
-        sheetName,
-        min,
-        max,
-        pass,
-        alias
-      }, // Fields to update
-      { new: true } // Return the updated document
+    // Check if new data already exists (excluding the same alias)
+    const existingData = await EmailList.findOne({
+      email, alias, new_sheetId, new_sheetName, new_min, new_max, new_pass
+    });
+
+    if (existingData) {
+      return res.status(409).json({ status: 'error', message: 'Similar entry already exists' });
+    }
+
+    // Update the record
+    const updatedEntry = await EmailList.findOneAndUpdate(
+      { id, email, sheetId, sheetName, min, max, pass, alias },
+      { id, sheetId: new_sheetId, sheetName: new_sheetName, min: new_min, max: new_max, pass: new_pass },
+      { new: true }
     );
 
-    if (!updatedEmail) {
+    if (!updatedEntry) {
       return res.status(404).json({ status: 'error', message: 'Email not found' });
     }
 
-    res.status(200).json({ status: 'success', message: 'Email updated successfully', updatedEmail });
+    res.status(200).json({ status: 'success', message: 'Email updated successfully', updatedEntry });
   } catch (error) {
     console.error(error);
     res.status(500).json({ status: 'error', message: 'Failed to update email' });
   }
 });
-
 
 
 cron.schedule('*/5 * * * *', () => {
