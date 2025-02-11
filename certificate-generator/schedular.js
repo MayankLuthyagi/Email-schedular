@@ -575,7 +575,7 @@ app.put('/update-email', async (req, res) => {
 
 
   const { id, main, email, sheetId, sheetName, min, max, pass, alias } = editObj;
-  const { new_email, new_sheetId, new_sheetName, new_min, new_max, new_pass, new_alias } = updatedEmail;
+  const { new_email, new_sheetId, new_sheetName, new_min, new_max, new_pass } = updatedEmail;
 
   if (!main || !email || !alias || !new_sheetId || !new_sheetName || !new_min || !new_max || !new_pass) {
     return res.status(400).json({ status: 'error', message: 'All fields are required' });
@@ -583,7 +583,7 @@ app.put('/update-email', async (req, res) => {
   try {
     // Check if new data already exists (excluding the same alias)
     const existingData = await EmailList.findOne({
-      email, alias, new_sheetId, new_sheetName, new_min, new_max, new_pass
+      new_email, alias, new_sheetId, new_sheetName, new_min, new_max, new_pass
     });
 
     if (existingData) {
