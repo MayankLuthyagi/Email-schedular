@@ -17,6 +17,7 @@ mongoose.connect(process.env.MONGODB_URI)
 const AutoIncrement = require('mongoose-sequence')(mongoose);
 // MongoDB schemas
 const scheduledEmailSchema = new mongoose.Schema({
+  main: String,
   sheetId: String,
   sheetName: String,
   emailId: String,
@@ -34,6 +35,7 @@ const emailAdmin = new mongoose.Schema({
 });
 const emailListSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
+  main: String,
   email: String,
   sheetId: String,
   sheetName: String,
@@ -167,10 +169,10 @@ app.post('/get-sheet-names', async (req, res) => {
 });
 
 app.post('/schedule-emails', async (req, res) => {
-  const { sheetId, sheetName, email, pass, alias, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
+  const { main, sheetId, sheetName, email, pass, alias, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
 
   // Validate required fields
-  if (!sheetId || !sheetName || !pass || !email || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
+  if (!main || !sheetId || !sheetName || !pass || !email || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
     return res.status(400).json({ status: 'error', message: `One or more parameters are missing.` });
   }
 
@@ -207,6 +209,7 @@ app.post('/schedule-emails', async (req, res) => {
 
     // Add new task
     const newScheduledEmail = new ScheduledEmail({
+      main,
       sheetId,
       sheetName,
       emailId: email,
@@ -233,7 +236,7 @@ app.post('/schedule-emails', async (req, res) => {
         return;
       }
 
-      await sendEmails(taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.pass, taskData.alias, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
+      await sendEmails(taskData.main, taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.pass, taskData.alias, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
       await ScheduledEmail.deleteOne({ cronTime });
     });
 
@@ -244,7 +247,7 @@ app.post('/schedule-emails', async (req, res) => {
   }
 });
 
-async function sendEmails(sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
+async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
   try {
     if (!sheetId || !sheetName) {
       throw new Error('No data found in the Google Sheet.');
@@ -277,27 +280,28 @@ async function sendEmails(sheetId, sheetName, emailId, pass, alias, emailSubject
       return console.error('Google Sheet is empty');
     }
     if (attachment) {
-      await sendEmail(emailId, array_email, alias, pass, emailSubject, emailBody, attachment);
+      await sendEmail(main, emailId, array_email, alias, pass, emailSubject, emailBody, attachment);
     } else {
-      await sendEmail(emailId, array_email, alias, pass, emailSubject, emailBody, null);
+      await sendEmail(main, emailId, array_email, alias, pass, emailSubject, emailBody, null);
     }
   } catch (error) {
     console.error('Error in sendEmails function:', error);
   }
 }
 
-async function sendEmail(emailId, bcc, alias, pass, subject, htmlContent, attachment) {
+async function sendEmail(main, emailId, bcc, alias, pass, subject, htmlContent, attachment) {
   try {
-    const transporter = await getTransporter(alias, pass);
-    const fromAddress = transporter.options.auth.user;
+    const transporter = await getTransporter(main, alias, pass);
+    const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
 
     const mailOptions = {
       from: fromAddress,
-      to: emailId,
-      bcc,
+      to: emailId || undefined,
+      bcc: Array.isArray(bcc) ? bcc.join(", ") : bcc,
       subject,
       html: htmlContent,
     };
+
 
     if (attachment) {
       mailOptions.attachments = Array.isArray(attachment)
@@ -322,7 +326,7 @@ async function sendEmail(emailId, bcc, alias, pass, subject, htmlContent, attach
   }
 }
 
-async function getTransporter(email, pass) {
+async function getTransporter(email, alias, pass) {
   try {
 
     if (!email || !pass) {
@@ -333,7 +337,8 @@ async function getTransporter(email, pass) {
       service: 'gmail',
       auth: {
         user: email,
-        pass: pass
+        pass: pass,
+        alias: alias
       }
     });
 
@@ -406,6 +411,7 @@ app.get('/email-detail', async (req, res) => {
 
     if (data) {
       return res.json({
+        main: data.main,
         email: data.email,
         sheetId: data.sheetId,
         sheetName: data.sheetName,
@@ -447,19 +453,19 @@ app.get('/credential-details', async (req, res) => {
 
 // Route to add a new email to the email list collection
 app.post('/pemails', async (req, res) => {
-  const { email, sheetId, sheetName, pass, alias, min, max } = req.body;
+  const { main, email, sheetId, sheetName, pass, alias, min, max } = req.body;
 
-  if (!email || !sheetId || !sheetName || !min || !max || !pass || !alias) {
+  if (!main || !email || !sheetId || !sheetName || !min || !max || !pass || !alias) {
     return res.status(400).json({ error: 'All fields are required' });
   }
 
   try {
     // Step 1: Find all entries with the same alias, sheetId, and sheetName
-    const existingEntries = await EmailList.find({ pass, alias, sheetId, sheetName });
+    const existingEntries = await EmailList.find({ main, pass, alias, sheetId, sheetName });
 
     // If no existing entries, add a new one
     if (!existingEntries) {
-      const emailEntry = new EmailList({ email, sheetId, sheetName, pass, alias, min, max });
+      const emailEntry = new EmailList({ main, email, sheetId, sheetName, pass, alias, min, max });
       await emailEntry.save();
       return res.status(201).json({ message: 'Email added successfully', id: emailEntry.id });
     }
@@ -476,7 +482,7 @@ app.post('/pemails', async (req, res) => {
     }
 
     // Step 3: Add the new email entry since no overlap was found
-    const emailEntry = new EmailList({ email, sheetId, sheetName, pass, alias, min, max });
+    const emailEntry = new EmailList({ main, email, sheetId, sheetName, pass, alias, min, max });
     await emailEntry.save();
 
     res.status(201).json({ message: 'Email added successfully', id: emailEntry.id });
@@ -568,7 +574,7 @@ app.put('/update-email', async (req, res) => {
   }
 
 
-  const { id, email, sheetId, sheetName, min, max, pass, alias } = editObj;
+  const { id, main, email, sheetId, sheetName, min, max, pass, alias } = editObj;
   const { new_email, new_sheetId, new_sheetName, new_min, new_max, new_pass, new_alias } = updatedEmail;
 
   if (!email || !alias || !new_sheetId || !new_sheetName || !new_min || !new_max || !new_pass) {
@@ -586,8 +592,8 @@ app.put('/update-email', async (req, res) => {
 
     // Update the record
     const updatedEntry = await EmailList.findOneAndUpdate(
-      { id, email, sheetId, sheetName, min, max, pass, alias },
-      { id, sheetId: new_sheetId, sheetName: new_sheetName, min: new_min, max: new_max, pass: new_pass },
+      { id, main, email, sheetId, sheetName, min, max, pass, alias },
+      { id, sheetId: new_sheetId, sheetName: new_sheetName, min: new_min, max: new_max, pass: new_pass, email: new_email },
       { new: true }
     );
 
