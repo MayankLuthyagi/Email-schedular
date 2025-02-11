@@ -461,7 +461,7 @@ app.post('/pemails', async (req, res) => {
 
   try {
     // Step 1: Find all entries with the same alias, sheetId, and sheetName
-    const existingEntries = await EmailList.find({ main, pass, alias, sheetId, sheetName });
+    const existingEntries = await EmailList.find({ main, pass, alias, sheetId, sheetName, email });
 
     // If no existing entries, add a new one
     if (!existingEntries) {
@@ -577,7 +577,7 @@ app.put('/update-email', async (req, res) => {
   const { id, main, email, sheetId, sheetName, min, max, pass, alias } = editObj;
   const { new_email, new_sheetId, new_sheetName, new_min, new_max, new_pass, new_alias } = updatedEmail;
 
-  if (!email || !alias || !new_sheetId || !new_sheetName || !new_min || !new_max || !new_pass) {
+  if (!main || !email || !alias || !new_sheetId || !new_sheetName || !new_min || !new_max || !new_pass) {
     return res.status(400).json({ status: 'error', message: 'All fields are required' });
   }
   try {
