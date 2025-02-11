@@ -577,7 +577,7 @@ app.put('/update-email', async (req, res) => {
   const { id, main, email, sheetId, sheetName, min, max, pass, alias } = editObj;
   const { new_email, new_sheetId, new_sheetName, new_min, new_max, new_pass } = updatedEmail;
 
-  if (!main || !email || !alias || !new_sheetId || !new_sheetName || !new_min || !new_max || !new_pass) {
+  if (!main || !new_email || !alias || !new_sheetId || !new_sheetName || !new_min || !new_max || !new_pass) {
     return res.status(400).json({ status: 'error', message: 'All fields are required' });
   }
   try {
