@@ -1,21 +1,23 @@
-name: Keep Render Awake
+name: Run Scheduler
+
 on:
   schedule:
     - cron: '*/15 * * * *'  # Runs every 15 minutes
+  workflow_dispatch:  # Allows manual triggering
+
 jobs:
   run-scheduler:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18  # Use the Node.js version you need
+        uses: actions/checkout@v3  # Ensures the repo is cloned
 
       - name: Install Dependencies
-        run: npm install
+        run: |
+          cd certificate-generator  # Move into the correct directory
+          npm install
 
       - name: Run Scheduler Script
-        run: node certificate-generator/schedular.js
+        run: |
+          cd certificate-generator  # Move into the correct directory again
+          node schedular.js  # Run your script
