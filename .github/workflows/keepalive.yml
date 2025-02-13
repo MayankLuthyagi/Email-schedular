@@ -18,6 +18,13 @@ jobs:
           npm install
 
       - name: Run Scheduler Script
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          REDIRECT_URI: ${{ secrets.REDIRECT_URI }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: |
-          cd certificate-generator  # Move into the correct directory again
+          cd certificate-generator  # Move into the correct directory
           node schedular.js  # Run your script
