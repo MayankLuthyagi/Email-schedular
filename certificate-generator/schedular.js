@@ -243,34 +243,36 @@ app.post('/schedule-emails', async (req, res) => {
 });
 
 const scheduleTasks = async () => {
-  // Fetch all scheduled tasks from the database
-  const scheduledTasks = await ScheduledEmail.find();
+    // Fetch emails that should be sent now or earlier
+    const now = dayjs().toISOString();
+    const scheduledEmails = await ScheduledEmail.find({ scheduledDateTime: { $lte: now } });
 
-  scheduledTasks.forEach(task => {
-    cron.schedule(task.cronTime, async () => {
-      console.log(`Scheduled job triggered at ${task.scheduledDate}`);
+    if (scheduledEmails.length === 0) {
+      console.log('No pending emails to send.');
+      return;
+    }
 
-      const taskData = await ScheduledEmail.findOne({ cronTime: task.cronTime });
-      if (!taskData) {
-        console.log('Task not found.');
-        return;
+    // Process each scheduled email
+    for (const task of scheduledEmails) {
+      console.log(`Sending email scheduled at ${task.scheduledDateTime}`);
+
+      try {
+        // Send the email
+        await sendEmails(
+            task.main, task.sheetId, task.sheetName,
+            task.emailId, task.pass, task.alias,
+            task.emailSubject, task.emailBody,
+            task.attachment, task.ranges
+        );
+
+        // Remove the task after execution
+        await ScheduledEmail.deleteOne({ _id: task._id });
+        console.log(`Email sent and task deleted for ${task.scheduledDateTime}`);
+      } catch (error) {
+        console.error(`Error sending scheduled email: ${error}`);
       }
-
-      // Execute the email sending function
-      await sendEmails(
-          taskData.main, taskData.sheetId, taskData.sheetName,
-          taskData.emailId, taskData.pass, taskData.alias,
-          taskData.emailSubject, taskData.emailBody,
-          taskData.attachment, taskData.ranges
-      );
-
-      // Remove the task after execution
-      await ScheduledEmail.deleteOne({ cronTime: task.cronTime });
-      console.log(`Task for ${task.cronTime} completed and deleted.`);
-    });
-  });
+    }
 };
-
 
 async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
   try {
@@ -634,8 +636,8 @@ app.put('/update-email', async (req, res) => {
 });
 
 cron.schedule('*/5 * * * *', () => {
-  scheduleTasks();
   console.log('server is running new');
+  scheduleTasks();
 });
 
 app.listen(port, () => {
