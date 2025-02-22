@@ -151,8 +151,6 @@ async function getSheetNames(sheetId) {
     }
   }
 }
-
-
 app.post('/get-sheet-names', async (req, res) => {
   const { sheetId } = req.body;
 
@@ -169,11 +167,23 @@ app.post('/get-sheet-names', async (req, res) => {
 });
 
 app.post('/schedule-emails', async (req, res) => {
-  const { main, sheetId, sheetName, email, pass, alias, emailSubject, emailBody, attachment, ranges, scheduledDateTime } = req.body;
+  const {
+    main,
+    sheetId,
+    sheetName,
+    email,
+    pass,
+    alias,
+    emailSubject,
+    emailBody,
+    attachment,
+    ranges,
+    scheduledDateTime
+  } = req.body;
 
   // Validate required fields
   if (!main || !sheetId || !sheetName || !pass || !email || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
-    return res.status(400).json({ status: 'error', message: `One or more parameters are missing.` });
+    return res.status(400).json({status: 'error', message: `One or more parameters are missing.`});
   }
 
   try {
@@ -181,7 +191,7 @@ app.post('/schedule-emails', async (req, res) => {
     const scheduledDate = dayjs(scheduledDateTime);
     const now = dayjs();
     if (scheduledDate.isBefore(now)) {
-      return res.status(400).json({ status: 'error', message: 'Scheduled time must be in the future.' });
+      return res.status(400).json({status: 'error', message: 'Scheduled time must be in the future.'});
     }
 
     // Convert scheduledDate to cron format
@@ -225,27 +235,44 @@ app.post('/schedule-emails', async (req, res) => {
 
     // Save the scheduled email to the database
     await newScheduledEmail.save();
+  } catch (error) {
+    console.error('Error in /schedule-emails:', error);
+    res.status(500).json({status: 'error', message: 'An error occurred while scheduling emails.'});
+  }
+});
 
-    // Schedule the cron job to send emails at the specified time
-    cron.schedule(cronTime, async () => {
-      console.log(`Scheduled job triggered at ${scheduledDate.format()}`);
+const scheduleTasks = async () => {
+  // Fetch all scheduled tasks from the database
+  const scheduledTasks = await ScheduledEmail.find();
 
-      const taskData = await ScheduledEmail.findOne({ cronTime });
+  scheduledTasks.forEach(task => {
+    cron.schedule(task.cronTime, async () => {
+      console.log(`Scheduled job triggered at ${task.scheduledDate}`);
+
+      const taskData = await ScheduledEmail.findOne({ cronTime: task.cronTime });
       if (!taskData) {
         console.log('Task not found.');
         return;
       }
 
-      await sendEmails(taskData.main, taskData.sheetId, taskData.sheetName, taskData.emailId, taskData.pass, taskData.alias, taskData.emailSubject, taskData.emailBody, taskData.attachment, taskData.ranges);
-      await ScheduledEmail.deleteOne({ cronTime });
-    });
+      // Execute the email sending function
+      await sendEmails(
+          taskData.main, taskData.sheetId, taskData.sheetName,
+          taskData.emailId, taskData.pass, taskData.alias,
+          taskData.emailSubject, taskData.emailBody,
+          taskData.attachment, taskData.ranges
+      );
 
-    res.json({ status: 'success', message: `Emails scheduled successfully for ${scheduledDate.format()}` });
-  } catch (error) {
-    console.error('Error in /schedule-emails:', error);
-    res.status(500).json({ status: 'error', message: 'An error occurred while scheduling emails.' });
-  }
-});
+      // Remove the task after execution
+      await ScheduledEmail.deleteOne({ cronTime: task.cronTime });
+      console.log(`Task for ${task.cronTime} completed and deleted.`);
+    });
+  });
+};
+
+// Run this once when the server starts
+scheduleTasks();
+
 
 async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
   try {
