@@ -235,6 +235,7 @@ app.post('/schedule-emails', async (req, res) => {
 
     // Save the scheduled email to the database
     await newScheduledEmail.save();
+    res.json({ status: 'success', message: 'Email scheduled successfully.' });
   } catch (error) {
     console.error('Error in /schedule-emails:', error);
     res.status(500).json({status: 'error', message: 'An error occurred while scheduling emails.'});
@@ -632,8 +633,8 @@ app.put('/update-email', async (req, res) => {
   }
 });
 
-
 cron.schedule('*/5 * * * *', () => {
+  scheduleTasks();
   console.log('server is running new');
 });
 
@@ -642,7 +643,7 @@ app.listen(port, () => {
 });
 // Run this once when the server starts
 app.get('/running', (req, res) => {
+  scheduleTasks();
   res.json({ message: 'Scheduler route is working' });
 });
-scheduleTasks();
 
