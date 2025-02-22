@@ -270,9 +270,6 @@ const scheduleTasks = async () => {
   });
 };
 
-// Run this once when the server starts
-scheduleTasks();
-
 
 async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
   try {
@@ -643,4 +640,9 @@ cron.schedule('*/5 * * * *', () => {
 app.listen(port, () => {
   console.log(`Server running on port no:${port}`);
 });
+// Run this once when the server starts
+app.get('/running', (req, res) => {
+  res.json({ message: 'Scheduler route is working' });
+});
+scheduleTasks();
 
