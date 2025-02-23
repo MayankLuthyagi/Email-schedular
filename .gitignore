@@ -1,3 +1,4 @@
 .env
+schedule/.env
 node_modules
 .idea
