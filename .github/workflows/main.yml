@@ -1,0 +1,26 @@
+name: Email Scheduler
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"  # Runs every 30 minutes
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  run-scheduler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18  # Change version as needed
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: Email-Schedular
+
+      - name: Run scheduler script
+        run: node schedular.js
+        working-directory: Email-Schedular
