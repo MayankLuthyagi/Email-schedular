@@ -158,7 +158,7 @@ async function sendEmail(main, emailId, bcc, alias, pass, subject, htmlContent, 
         }
 
         await transporter.sendMail(mailOptions);
-        console.log(`Email sent successfully to ${bcc}`);
+        console.log(`Email sent successfully`);
     } catch (error) {
         console.error('Error in sendEmail:', error);
     }
