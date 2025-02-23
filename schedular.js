@@ -243,17 +243,20 @@ app.post('/schedule-emails', async (req, res) => {
 });
 
 const scheduleTasks = async () => {
+  try {
     // Fetch emails that should be sent now or earlier
     const now = dayjs().toISOString();
     const scheduledEmails = await ScheduledEmail.find({ scheduledDateTime: { $lte: now } });
 
     if (scheduledEmails.length === 0) {
       console.log('No pending emails to send.');
+      await mongoose.connection.close(); // Close the connection before returning
+      console.log('MongoDB connection closed.');
       return;
     }
 
-    // Process each scheduled email
-    for (const task of scheduledEmails) {
+    // Process each scheduled email in parallel
+    await Promise.all(scheduledEmails.map(async (task) => {
       console.log(`Sending email scheduled at ${task.scheduledDateTime}`);
 
       try {
@@ -271,11 +274,18 @@ const scheduleTasks = async () => {
       } catch (error) {
         console.error(`Error sending scheduled email: ${error}`);
       }
-    }
-  mongoose.connection.close()
-      .then(() => console.log('MongoDB connection closed.'))
-      .catch(err => console.error('Error closing MongoDB connection:', err));
+    }));
+
+    // Close MongoDB connection after processing all emails
+    await mongoose.connection.close();
+    console.log('MongoDB connection closed.');
+  } catch (error) {
+    console.error('Error in scheduling tasks:', error);
+    await mongoose.connection.close(); // Ensure connection closes on error
+    console.log('MongoDB connection closed due to an error.');
+  }
 };
+
 
 async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
   try {
