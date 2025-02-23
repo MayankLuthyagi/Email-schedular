@@ -2,7 +2,7 @@ name: Email Scheduler
 
 on:
   schedule:
-    - cron: "*/30 * * * *"  # Runs every 30 minutes
+    - cron: "*/15 * * * *"  # Runs every 30 minutes
   workflow_dispatch:  # Allows manual trigger
 
 jobs:
@@ -30,4 +30,4 @@ jobs:
           echo "REFRESH_TOKEN=${{ secrets.REFRESH_TOKEN }}" >> .env
 
       - name: Run scheduler script
-        run: node schedular.js
+        run: node schedule/running.js
