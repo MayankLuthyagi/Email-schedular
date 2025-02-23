@@ -1,5 +1,5 @@
 {
-  "name": "certificate-generator",
+  "name": "Email-Schedular",
   "version": "1.0.0",
   "description": "Automated certificate generation and email sending",
   "main": "server.js",
