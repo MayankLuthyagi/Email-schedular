@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 const dayjs = require('dayjs');
+const {google} = require("googleapis");
 require('dotenv').config();
 const scheduledEmailSchema = new mongoose.Schema({
     main: String,
@@ -23,6 +24,8 @@ mongoose.connect(process.env.MONGODB_URI)
 const AutoIncrement = require('mongoose-sequence')(mongoose);
 const ScheduledEmail = mongoose.model('ScheduledEmail', scheduledEmailSchema);
 
+const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
+const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
 const scheduleTasks = async () => {
     try {
