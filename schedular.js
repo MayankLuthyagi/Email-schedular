@@ -272,6 +272,9 @@ const scheduleTasks = async () => {
         console.error(`Error sending scheduled email: ${error}`);
       }
     }
+  mongoose.connection.close()
+      .then(() => console.log('MongoDB connection closed.'))
+      .catch(err => console.error('Error closing MongoDB connection:', err));
 };
 
 async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
@@ -635,4 +638,3 @@ app.put('/update-email', async (req, res) => {
   }
 });
 scheduleTasks();
-
