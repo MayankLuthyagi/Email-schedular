@@ -1,5 +1,3 @@
-name: Email Scheduler
-
 on:
   schedule:
     - cron: "*/30 * * * *"  # Runs every 30 minutes
