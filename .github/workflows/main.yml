@@ -12,16 +12,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Debug - List directory contents
-        run: ls -R  # Helps verify the correct structure
-
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18  # Change version as needed
 
       - name: Install dependencies
-        run: npm install  # No working-directory needed
+        run: npm install
+
+      - name: Create .env file
+        run: |
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env
+          echo "CLIENT_ID=${{ secrets.CLIENT_ID }}" >> .env
+          echo "CLIENT_SECRET=${{ secrets.CLIENT_SECRET }}" >> .env
+          echo "REDIRECT_URI=${{ secrets.REDIRECT_URI }}" >> .env
+          echo "REFRESH_TOKEN=${{ secrets.REFRESH_TOKEN }}" >> .env
 
       - name: Run scheduler script
-        run: node schedular.js  # No working-directory needed
+        run: node schedular.js
