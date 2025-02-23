@@ -3,7 +3,9 @@ const nodemailer = require('nodemailer');
 const dayjs = require('dayjs');
 const {google} = require("googleapis");
 const bodyParser = require("body-parser");
+const express = require("express");
 require('dotenv').config();
+
 const scheduledEmailSchema = new mongoose.Schema({
     main: String,
     sheetId: String,
@@ -19,6 +21,7 @@ const scheduledEmailSchema = new mongoose.Schema({
     cronTime: String,
 });
 
+const app = express();
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
