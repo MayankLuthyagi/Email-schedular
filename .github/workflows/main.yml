@@ -1,3 +1,5 @@
+name: Email Scheduler
+
 on:
   schedule:
     - cron: "*/30 * * * *"  # Runs every 30 minutes
@@ -10,22 +12,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: List files for debugging
-        run: ls -R  # Check if the Email-Schedular directory exists
+      - name: Debug - List directory contents
+        run: ls -R  # Helps verify the correct structure
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18  # Change version if needed
+          node-version: 18  # Change version as needed
 
       - name: Install dependencies
-        run: |
-          cd Email-Schedular  # Ensure the correct directory
-          npm install
-        shell: bash
+        run: npm install  # No working-directory needed
 
       - name: Run scheduler script
-        run: |
-          cd Email-Schedular  # Ensure correct directory
-          node schedular.js
-        shell: bash
+        run: node schedular.js  # No working-directory needed
