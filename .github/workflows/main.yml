@@ -12,15 +12,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: List files for debugging
+        run: ls -R  # Check if the Email-Schedular directory exists
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18  # Change version as needed
+          node-version: 18  # Change version if needed
 
       - name: Install dependencies
-        run: npm install
-        working-directory: Email-Schedular
+        run: |
+          cd Email-Schedular  # Ensure the correct directory
+          npm install
+        shell: bash
 
       - name: Run scheduler script
-        run: node schedular.js
-        working-directory: Email-Schedular
+        run: |
+          cd Email-Schedular  # Ensure correct directory
+          node schedular.js
+        shell: bash
