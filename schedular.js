@@ -647,3 +647,6 @@ app.put('/update-email', async (req, res) => {
     res.status(500).json({ status: 'error', message: 'Failed to update email' });
   }
 });
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`)
+})
