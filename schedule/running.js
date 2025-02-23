@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 const dayjs = require('dayjs');
 const {google} = require("googleapis");
+const bodyParser = require("body-parser");
 require('dotenv').config();
 const scheduledEmailSchema = new mongoose.Schema({
     main: String,
@@ -24,6 +25,17 @@ mongoose.connect(process.env.MONGODB_URI)
 const AutoIncrement = require('mongoose-sequence')(mongoose);
 const ScheduledEmail = mongoose.model('ScheduledEmail', scheduledEmailSchema);
 
+app.use(bodyParser.json({ limit: '100mb' }));
+app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
+
+// Google Sheets and Drive credentials
+const oauth2Client = new google.auth.OAuth2(
+    process.env.CLIENT_ID,
+    process.env.CLIENT_SECRET,
+    process.env.REDIRECT_URI
+);
+
+oauth2Client.setCredentials({ refresh_token: process.env.REFRESH_TOKEN });
 const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
