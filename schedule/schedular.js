@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 const cron = require('node-cron');
 const dayjs = require('dayjs');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 const app = express();
 const port = 3000;
