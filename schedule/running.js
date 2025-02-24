@@ -105,6 +105,7 @@ async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailS
         const len = Math.min(ranges[1] + 1, rows.length - 1);
         const start = Math.max(ranges[0], 1);
         const array_email = [];
+        console.log(`Schedule mailed in ranged ${start}-${len}`);
         for (let i = start; i <= len; i++) {
             const row = rows[i];
             const email = row[0]?.toString() || ''; // Convert to string, default to empty string if undefined
