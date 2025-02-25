@@ -2,7 +2,7 @@ name: Email Scheduler
 
 on:
   schedule:
-    - cron: "*/10 * * * *" 
+    - cron: "*/5 * * * *" 
   workflow_dispatch:  # Allows manual trigger
 
 jobs:
