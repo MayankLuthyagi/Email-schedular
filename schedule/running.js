@@ -138,7 +138,12 @@ async function sendEmail(main, emailId, bcc, alias, pass, subject, htmlContent, 
             to: emailId || undefined,
             bcc: Array.isArray(bcc) ? bcc.join(", ") : bcc,
             subject,
-            html: htmlContent,
+            html: htmlContent
+                // Clean whitespace and newlines
+                .replace(/\s*\n\s*/g, '\n') // Remove spaces around newlines
+                .replace(/\n{2,}/g, '\n')   // Replace multiple newlines with a single one
+                // Inject inline CSS to control spacing (example for <p> tags)
+                .replace(/<p>/g, '<p style="margin: 0; padding: 0;">')
         };
 
 
