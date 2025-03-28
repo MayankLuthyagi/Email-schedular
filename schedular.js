@@ -6,7 +6,8 @@ const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 const cron = require('node-cron');
 const dayjs = require('dayjs');
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+require('dotenv').config();
+
 
 const app = express();
 const port = 3000;
@@ -183,41 +184,39 @@ app.post('/schedule-emails', async (req, res) => {
 
   // Validate required fields
   if (!main || !sheetId || !sheetName || !pass || !email || !emailSubject || !emailBody || !ranges || !scheduledDateTime) {
-    return res.status(400).json({status: 'error', message: `One or more parameters are missing.`});
+    return res.status(400).json({ status: 'error', message: 'One or more parameters are missing.' });
   }
 
   try {
-    // Validate that the scheduled time is in the future
+    // Ensure scheduled time is in the future
     const scheduledDate = dayjs(scheduledDateTime);
     const now = dayjs();
     if (scheduledDate.isBefore(now)) {
-      return res.status(400).json({status: 'error', message: 'Scheduled time must be in the future.'});
+      return res.status(400).json({ status: 'error', message: 'Scheduled time must be in the future.' });
     }
 
-    // Convert scheduledDate to cron format
+    // Convert scheduled time to cron format
     const cronTime = `${scheduledDate.second()} ${scheduledDate.minute()} ${scheduledDate.hour()} ${scheduledDate.date()} ${scheduledDate.month() + 1} *`;
 
-    // Handle attachments - single, multiple, or null
-    let emailAttachments = null;
+    // Process attachments (ensure it's always an array)
+    let emailAttachments = [];
     if (attachment) {
       if (Array.isArray(attachment)) {
-        // If it's an array, assign the array directly
         emailAttachments = attachment.map(att => ({
           filename: att.filename,
           content: att.content,
           contentType: att.contentType
         }));
       } else {
-        // If it's a single object, wrap it in an array
-        emailAttachments = [{
+        emailAttachments.push({
           filename: attachment.filename,
           content: attachment.content,
           contentType: attachment.contentType
-        }];
+        });
       }
     }
 
-    // Add new task
+    // Create a new scheduled email entry
     const newScheduledEmail = new ScheduledEmail({
       main,
       sheetId,
@@ -233,12 +232,13 @@ app.post('/schedule-emails', async (req, res) => {
       cronTime
     });
 
-    // Save the scheduled email to the database
+    // Save to database
     await newScheduledEmail.save();
-    res.json({ status: 'success', message: 'Email scheduled successfully.' });
+
+    res.json({ status: 'success', message: 'Email scheduled successfully.', scheduledEmail: newScheduledEmail });
   } catch (error) {
     console.error('Error in /schedule-emails:', error);
-    res.status(500).json({status: 'error', message: 'An error occurred while scheduling emails.'});
+    res.status(500).json({ status: 'error', message: 'An error occurred while scheduling emails.' });
   }
 });
 
@@ -411,6 +411,17 @@ app.get('/alias', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch emails' });
   }
 });
+app.get('/range', async (req, res) => {
+  try {
+    const emails = await EmailList.find();
+    const range = emails.map(emailEntry => emailEntry.min);
+    res.json(range);
+  } catch (error) {
+    console.error('Error fetching starting range:', error);
+    res.status(500).json({ error: 'Failed to fetch starting range' });
+  }
+});
+
 app.get('/emailObj', async (req, res) => {
   try {
     const data = await EmailList.find();
@@ -648,5 +659,5 @@ app.put('/update-email', async (req, res) => {
   }
 });
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
+  console.log(`App listening on port ${port}`)
 })
