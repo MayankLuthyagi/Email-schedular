@@ -19,6 +19,7 @@ const AutoIncrement = require('mongoose-sequence')(mongoose);
 // MongoDB schemas
 const scheduledEmailSchema = new mongoose.Schema({
   main: String,
+  emailName:String,
   sheetId: String,
   sheetName: String,
   emailId: String,
@@ -79,6 +80,7 @@ app.get('/scheduled-tasks', async (req, res) => {
     const tasks = await ScheduledEmail.find();
     const taskSummaries = tasks.map((task, index) => ({
       index,
+      emailName: task.emailName,
       emailSubject: task.emailSubject,
       scheduledDateTime: task.scheduledDateTime,
       alias: task.alias
@@ -170,6 +172,7 @@ app.post('/get-sheet-names', async (req, res) => {
 app.post('/schedule-emails', async (req, res) => {
   const {
     main,
+    emailName,
     sheetId,
     sheetName,
     email,
@@ -219,6 +222,7 @@ app.post('/schedule-emails', async (req, res) => {
     // Create a new scheduled email entry
     const newScheduledEmail = new ScheduledEmail({
       main,
+      emailName,
       sheetId,
       sheetName,
       emailId: email,
@@ -262,7 +266,7 @@ const scheduleTasks = async () => {
       try {
         // Send the email
         await sendEmails(
-            task.main, task.sheetId, task.sheetName,
+            task.main,task.emailName, task.sheetId, task.sheetName,
             task.emailId, task.pass, task.alias,
             task.emailSubject, task.emailBody,
             task.attachment, task.ranges
@@ -287,7 +291,7 @@ const scheduleTasks = async () => {
 };
 
 
-async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
+async function sendEmails(main,name, sheetId, sheetName, emailId, pass, alias, emailSubject, emailBody, attachment, ranges) {
   try {
     if (!sheetId || !sheetName) {
       throw new Error('No data found in the Google Sheet.');
@@ -320,19 +324,19 @@ async function sendEmails(main, sheetId, sheetName, emailId, pass, alias, emailS
       return console.error('Google Sheet is empty');
     }
     if (attachment) {
-      await sendEmail(main, emailId, array_email, alias, pass, emailSubject, emailBody, attachment);
+      await sendEmail(main,name, emailId, array_email, alias, pass, emailSubject, emailBody, attachment);
     } else {
-      await sendEmail(main, emailId, array_email, alias, pass, emailSubject, emailBody, null);
+      await sendEmail(main,name, emailId, array_email, alias, pass, emailSubject, emailBody, null);
     }
   } catch (error) {
     console.error('Error in sendEmails function:', error);
   }
 }
 
-async function sendEmail(main, emailId, bcc, alias, pass, subject, htmlContent, attachment) {
+async function sendEmail(main,name, emailId, bcc, alias, pass, subject, htmlContent, attachment) {
   try {
     const transporter = await getTransporter(main, alias, pass);
-    const fromAddress = transporter.options.auth.alias || transporter.options.auth.user;
+    const fromAddress = name ? `"${name}" <${transporter.options.auth.user}>` : transporter.options.auth.user;
 
     const mailOptions = {
       from: fromAddress,
