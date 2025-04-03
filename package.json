@@ -4,7 +4,7 @@
   "description": "Automated certificate generation and email sending",
   "main": "server.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node schedular.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",
